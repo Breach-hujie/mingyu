@@ -142,6 +142,7 @@ test('终身奇门主体快照锁定出生口径且只允许目标区间补算',
 test('终身奇门初始盘与 AI 补算共享历史时区和阶段口径', async () => {
   const historicalDstInput = { ...input, year: '1990', month: '7', day: '1' };
   const lifetimeInput = buildQimenLifetimeInputs(historicalDstInput);
+  const decadalInput = buildQimenLifetimeInputs(historicalDstInput, 'decadalGanzhi');
   const requestInput = {
     ...lifetimeInput,
     periodRange,
@@ -159,6 +160,7 @@ test('终身奇门初始盘与 AI 补算共享历史时区和阶段口径', asyn
     ageSystem: 'fullYears',
     yearsPerStage: 15,
   });
+  assert.equal(decadalInput.stagePolicy?.model, 'decadalGanzhi');
   assert.match(initial.basis.timeZoneUsed, /Asia\/Shanghai \(UTC\+9\)/u);
 
   await withRealApi(async () => {
@@ -170,6 +172,18 @@ test('终身奇门初始盘与 AI 补算共享历史时区和阶段口径', asyn
     assert.deepEqual(remoteChart.ganzhi, initial.baseChart.ganzhi);
     assert.deepEqual(remote.input, requestInput);
   });
+});
+
+test('终身奇门分运模型应同时进入排盘输入和主体快照', () => {
+  const decadalPrompt = { ...prompt, qimenLifetimeStageModel: 'decadalGanzhi' as const };
+  const decadalSubject = buildReadingSubject(input, decadalPrompt);
+
+  assert.equal(
+    decadalSubject.lockedInputs['qimen-lifetime'].stagePolicy &&
+      (decadalSubject.lockedInputs['qimen-lifetime'].stagePolicy as Record<string, unknown>).model,
+    'decadalGanzhi',
+  );
+  assert.notEqual(decadalSubject.id, generatedSubject.id);
 });
 
 test('终身奇门公共接口拒绝无效或超过31年的目标区间', async () => {

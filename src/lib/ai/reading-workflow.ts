@@ -176,10 +176,20 @@ export function getReadingGuide(
       : Object.entries(workflow.methods)
           .filter(([, item]) => item.match.some((keyword) => text.includes(keyword)))
           .map(([, item]) => item);
+  const hasQimenLifetimeGuide = methods.some((item) => item.label === '奇门终身局');
+  const imageGuides = [
+    ...new Set(
+      methods
+        .filter((item) => !(hasQimenLifetimeGuide && item.label === '奇门遁甲'))
+        .map((item) => (item as { imageGuide?: unknown }).imageGuide)
+        .filter((item): item is string => typeof item === 'string' && item.trim().length > 0),
+    ),
+  ];
   return [
     '【解读方法】',
     ...workflow.principles,
     ...methods.map((item) => `${item.label}：${item.guide}`),
+    ...(imageGuides.length ? [`奇门取象、换象与造象：${imageGuides.join('\n')}`] : []),
   ].join('\n');
 }
 
@@ -418,6 +428,21 @@ type QimenPhase = QimenPhaseDraft & {
   facts: string;
 };
 
+function getQimenClusterStageIndexes(cluster: QimenEventCluster): Array<number | undefined> {
+  return cluster.stageIndices?.length ? cluster.stageIndices : [cluster.stageIndex];
+}
+
+function formatQimenStageCoverage(result: QimenLifetimeData, index: number | undefined) {
+  if (index === undefined) return '阶段范围外日期';
+  const stage = result.stages.find((item) => item.stageIndex === index);
+  if (!stage) return `阶段${index + 1}`;
+  const exactRange =
+    stage.startDateTime && stage.endDateTimeExclusive
+      ? `（${stage.startDateTime}起至${stage.endDateTimeExclusive}前）`
+      : '';
+  return `${stage.title}${exactRange}`;
+}
+
 function getQimenLifetimeResult(resource: ReadingResource): QimenLifetimeData | undefined {
   const structured = resource.structured;
   if (
@@ -465,14 +490,10 @@ function getQimenPhaseCoverage(
       Boolean(item.cluster),
     );
   const spans = [...new Set(selected.map(({ cluster }) => cluster.timeSpan))];
-  const stageIndexes = [...new Set(selected.map(({ cluster }) => cluster.stageIndex))].sort(
-    (a, b) => (a ?? Number.MAX_SAFE_INTEGER) - (b ?? Number.MAX_SAFE_INTEGER),
-  );
-  const stageNames = stageIndexes.map((index) =>
-    index === undefined
-      ? '阶段范围外日期'
-      : (result.stages.find((stage) => stage.stageIndex === index)?.title ?? `阶段${index + 1}`),
-  );
+  const stageIndexes = [
+    ...new Set(selected.flatMap(({ cluster }) => getQimenClusterStageIndexes(cluster))),
+  ].sort((a, b) => (a ?? Number.MAX_SAFE_INTEGER) - (b ?? Number.MAX_SAFE_INTEGER));
+  const stageNames = stageIndexes.map((index) => formatQimenStageCoverage(result, index));
   const dateKeys = selected.flatMap(({ slice, cluster }) =>
     (cluster.triggerDates ?? [])
       .slice(slice.startDateIndex, slice.endDateIndex)
@@ -526,7 +547,7 @@ function buildQimenPhaseAddition(
 ) {
   return `${guide}${currentTimeContext}\n\n【奇门终身局资料阶段】\n${facts}${
     supplementalText ? `\n\n【其他已取得资料】\n${supplementalText}` : ''
-  }\n\n【阶段解读】请依据本阶段标明的原局、阶段、事件日期和问题给出阶段判断；结论中保留目标时间范围、阶段覆盖和关键日期。`;
+  }\n\n【阶段解读】请依据本阶段标明的原局、阶段、干支、精确交运时刻、事件日期和问题给出阶段判断；结论中保留目标时间范围、阶段覆盖、交运前后层级和关键日期。`;
 }
 
 function qimenPhaseFits(
@@ -707,8 +728,8 @@ function buildQimenPhaseSummaryAddition(
     .map((index) => `${index + 1}/${phaseCount}`)
     .join('、')}；阶段中列出的事件日期均已参与分析。\n\n${
     intermediate
-      ? '【阶段归并】请保留每个阶段编号、日期和事实边界，依据各阶段已列事实归并分析。'
-      : '【最终解读】请综合已完成的全部奇门终身局阶段分析回答本轮问题；结论必须能追溯到阶段编号和日期范围。'
+      ? '【阶段归并】请保留每个阶段编号、干支、精确交运时刻、日期和事实边界，依据各阶段已列事实归并分析。'
+      : '【最终解读】请综合已完成的全部奇门终身局阶段分析回答本轮问题；结论需对应阶段编号、干支、精确交运时刻和日期范围。'
   }\n\n${facts}`;
 }
 

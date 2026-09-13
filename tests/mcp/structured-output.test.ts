@@ -449,6 +449,37 @@ async function withMcpClient<T>(callback: (client: Client) => Promise<T>) {
   return callback(await getMcpClient());
 }
 
+test('MCP 奇门十年干支大运保留精确区间与分层定位，缺少性别返回错误', async () => {
+  await withMcpClient(async (client) => {
+    const input = {
+      birthDateTime: '1990-05-15T14:30:00+08:00',
+      gender: 'male',
+      stagePolicy: { model: 'decadalGanzhi' },
+    };
+    const chart = await client.callTool({
+      name: 'divine_qimen_lifetime',
+      arguments: { ...input, detailMode: 'compact' },
+    });
+    assert.equal(chart.isError, undefined);
+    const data = chart.structuredContent?.result;
+    assert.equal(data.stages[1].ganzhi, '壬午');
+    assert.equal(data.stages[0].endDateTimeExclusive, data.stages[1].startDateTime);
+    assert.ok(data.stages[1].associatedMarkers.some((marker: string) => marker.includes('天盘')));
+    const prompt = await client.callTool({
+      name: 'qimen_lifetime_prompt',
+      arguments: { ...input, question: '请解读事业运限。' },
+    });
+    assert.equal(prompt.isError, undefined);
+    assert.match(prompt.structuredContent?.prompt, /精确区间/);
+    assert.match(prompt.structuredContent?.prompt, /起运口径/);
+    const invalid = await client.callTool({
+      name: 'divine_qimen_lifetime',
+      arguments: { birthDateTime: input.birthDateTime, stagePolicy: input.stagePolicy },
+    });
+    assert.equal(invalid.isError, true);
+  });
+});
+
 test('蓍草 MCP 支持计算、分堆重放和完整提示词', async () => {
   await withMcpClient(async (client) => {
     const input = { method: 'yarrow', seed: 'MCP蓍草', customDate: '2026-09-06T12:00:00+08:00' };

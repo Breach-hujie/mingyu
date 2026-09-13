@@ -1777,21 +1777,8 @@ function formatAdvancedScopeFacts(params: {
   const solarReturn = params.solarReturnEvidence;
   const progression = params.secondaryProgressionEvidence;
   const solarArc = params.solarArcEvidence;
-  const formatAspectFacts = (
-    facts: AstrolabeAdvancedAspectFact[],
-    technique: AstrolabeAdvancedTechnique,
-  ) =>
+  const formatAspectFacts = (facts: AstrolabeAdvancedAspectFact[]) =>
     facts
-      .filter(
-        (fact) =>
-          technique !== '太阳返照' ||
-          !(
-            fact.movingPoint === '太阳' &&
-            fact.natalPoint === '太阳' &&
-            fact.aspectName === '合相'
-          ),
-      )
-      .slice(0, 1)
       .map(
         (fact) =>
           `${fact.movingPoint}${fact.aspectName}${fact.natalPoint}（偏差${fact.deviation.toFixed(2)}°，${fact.closeness}）`,
@@ -1800,14 +1787,14 @@ function formatAdvancedScopeFacts(params: {
 
   if (solarReturn) {
     lines.push(
-      `太阳返照${solarReturn.dateTime ? `（${solarReturn.dateTime}）` : ''}：${formatAspectFacts(solarReturn.aspectFacts, '太阳返照') || '暂无'}。`,
+      `太阳返照${solarReturn.dateTime ? `（${solarReturn.dateTime}）` : ''}：${formatAspectFacts(solarReturn.aspectFacts) || '暂无'}。`,
     );
   }
   if (progression) {
-    lines.push(`次限相位：${formatAspectFacts(progression.aspectFacts, '次限推进') || '暂无'}。`);
+    lines.push(`次限相位：${formatAspectFacts(progression.aspectFacts) || '暂无'}。`);
   }
   if (solarArc) {
-    lines.push(`太阳弧相位：${formatAspectFacts(solarArc.aspectFacts, '太阳弧') || '暂无'}。`);
+    lines.push(`太阳弧相位：${formatAspectFacts(solarArc.aspectFacts) || '暂无'}。`);
   }
 
   return lines;

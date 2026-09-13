@@ -350,7 +350,7 @@ test('奇门终身局 P2：阶段划分引擎（四柱分限 vs 九宫巡行）'
   assert.equal(resultGuaGui.stages.length, 8);
   assert.equal(resultGuaGui.stages[0].calendarEnd, '2000-05-14');
   assert.equal(resultGuaGui.stages[1].calendarStart, '2000-05-15');
-  assert.equal(resultGuaGui.stages[7].ageEnd, 80);
+  assert.equal(resultGuaGui.stages[7].ageEnd, 79);
 
   // 4. 虚岁系统测试
   const resultNominal = calculateQimenLifetime({

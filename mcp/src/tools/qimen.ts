@@ -69,9 +69,9 @@ const qimenLifetimeSchema = z.object({
   stagePolicy: z
     .object({
       model: z
-        .enum(['pillarFourLimits', 'palaceWalk', 'fuShiHexagramOrbit'])
+        .enum(['pillarFourLimits', 'palaceWalk', 'fuShiHexagramOrbit', 'decadalGanzhi'])
         .describe(
-          '阶段模型：pillarFourLimits(四柱分限法，默认) | palaceWalk(洛书九宫巡行法) | fuShiHexagramOrbit(符使卦轨法)',
+          '阶段模型：pillarFourLimits(四柱分限法，默认) | palaceWalk(洛书九宫巡行法) | fuShiHexagramOrbit(符使交替十年分段) | decadalGanzhi(十年干支大运，需性别)',
         ),
       anchorRule: z.enum(['birthInstant', 'solarTermBoundary', 'lunarNewYear']).optional(),
       ageSystem: z.enum(['fullYears', 'nominalAge']).optional(),

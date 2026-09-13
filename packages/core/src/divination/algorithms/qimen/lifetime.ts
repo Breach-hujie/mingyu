@@ -13,6 +13,7 @@ import { generateQimen } from './index';
 import { normalizeQimenLifetimeTime } from './helpers/lifetime-time';
 import { extractPersonalMarkers, buildTopicCandidates } from './helpers/lifetime-markers';
 import { buildLifetimeStages } from './helpers/lifetime-stages';
+import { buildDecadalLifetimeStages } from './helpers/lifetime-decadal';
 import { scanLifetimeDynamicEvents, validateLifetimePeriodRange } from './helpers/lifetime-dynamic';
 import { buildLifetimePrompt } from './helpers/lifetime-prompt';
 
@@ -48,15 +49,31 @@ export function calculateQimenLifetime(input: QimenLifetimeInput): QimenLifetime
   const topicCandidates = buildTopicCandidates(baseChart, input.gender, input.topics);
 
   // 4. P2: 阶段引擎推算人生运限卡（变）
-  const stages = buildLifetimeStages(
-    baseChart,
-    personalMarkers,
-    topicCandidates,
-    timeResult.basis.stagePolicy,
-    timeResult.normalizedDate,
-    input.gender,
-    timeResult.calculationParts,
-  );
+  const decadal =
+    timeResult.basis.stagePolicy.model === 'decadalGanzhi'
+      ? buildDecadalLifetimeStages(
+          baseChart,
+          timeResult.referenceDate,
+          input,
+          timeResult.timezoneOffsetMinutes,
+        )
+      : undefined;
+  const stages =
+    decadal?.stages ??
+    buildLifetimeStages(
+      baseChart,
+      personalMarkers,
+      topicCandidates,
+      timeResult.basis.stagePolicy,
+      timeResult.normalizedDate,
+      input.gender,
+      timeResult.calculationParts,
+      {
+        timezone: input.timezone,
+        timeZoneId: input.timeZoneId,
+        fallbackOffsetMinutes: timeResult.timezoneOffsetMinutes,
+      },
+    );
 
   // 5. P3: 动态事件扫描与事件聚类（用，仅在指定 periodRange 时触发）
   let eventClusters: import('../../../types/divination').QimenEventCluster[] | undefined;
@@ -107,7 +124,7 @@ export function calculateQimenLifetime(input: QimenLifetimeInput): QimenLifetime
   const lifetimeData: QimenLifetimeData = {
     schemaVersion: '1.0.0',
     input,
-    basis: timeResult.basis,
+    basis: { ...timeResult.basis, ...(decadal ? { decadalLuck: decadal.basis } : {}) },
     baseChart,
     personalMarkers,
     topicCandidates,

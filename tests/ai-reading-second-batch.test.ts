@@ -52,10 +52,29 @@ const baziSubject: ReadingSubjectSnapshot = {
   range: { baziFortuneScope: 'year' },
 };
 
+const qimenLifetimeSubject: ReadingSubjectSnapshot = {
+  id: 'subject-qimen-lifetime-guide',
+  source: 'qimen-lifetime',
+  lockedInputs: { 'qimen-lifetime': {} },
+  allowedMethods: ['qimen-lifetime'],
+  range: { qimenLifetimeStageModel: 'decadalGanzhi' },
+};
+
 test('明确主体来源时优先使用对应术式指南，避免盘面关键词碰撞', () => {
   const guide = getReadingGuide('八字与紫微斗数都出现在原始任务正文中', baziSubject);
   assert.match(guide, /八字：/u);
   assert.doesNotMatch(guide, /紫微斗数：/u);
+});
+
+test('奇门终身局运行时指南保留十年大运边界与取象流程', () => {
+  const guide = getReadingGuide('请解读奇门终身局的十年大运和换象造象。', qimenLifetimeSubject);
+  assert.match(guide, /八字交节起运合参奇门本命宫/u);
+  assert.match(guide, /精确交运时刻/u);
+  assert.match(guide, /换象/u);
+  assert.match(guide, /造象/u);
+
+  const inferredGuide = getReadingGuide('请解读奇门终身局的十年大运和换象造象。');
+  assert.equal((inferredGuide.match(/奇门取象、换象与造象：/gu) ?? []).length, 1);
 });
 
 test('明确占卜术式时按术式路由，避免太乙和六爻正文关键词碰撞', () => {

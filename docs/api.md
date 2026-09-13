@@ -176,6 +176,8 @@
 
 公开 HTTP 成功响应的上限为 1 MiB，超过时返回 `HTTP 413` 与 `RESPONSE_TOO_LARGE`。长时限查询只需交给 AI 解读时，可使用 `responseMode: "prompt-only"` 获取完整提示词；需要全部结构化时限资料时可使用独立 MCP 的对应工具。奇门终身局最多31年是计算范围上限，实际 HTTP 返回还受响应大小和部署资源限制；分页或分段获取资料时应保留原目标范围并核对覆盖。
 
+奇门终身局可传 `stagePolicy: { "model": "decadalGanzhi" }` 选择十年干支大运，同时提供 `gender: "male"` 或 `"female"`。该模型采用八字交节起运合参奇门本命宫，默认模型仍为 `pillarFourLimits`。`basis.decadalLuck` 给出顺逆、起运年龄、时刻和定位口径；各运的 `ganzhi`、`startDateTime`、`endDateTimeExclusive` 和 `associatedMarkers` 在精简结果中也保留。精确交运区间含起点、不含终点，跨运事件通过 `stageIndices` 列出所涉及的全部阶段；已知具体时刻的交节事实另保留 Unix 毫秒 `timestamp`。`yearsPerStage` 用于九宫行限，十年干支大运固定每运十年。
+
 真太阳时换算：
 
 ```bash

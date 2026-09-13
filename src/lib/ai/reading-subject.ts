@@ -1,4 +1,4 @@
-import type { QueryInputState, QueryPromptState } from '@/lib/query-state';
+import type { QimenLifetimeStageModel, QueryInputState, QueryPromptState } from '@/lib/query-state';
 import { BIRTH_TIME_OPTIONS } from '@/lib/birth-time';
 import { FRONTEND_DEFAULT_TIME_ZONE_ID } from '@/lib/time-policy';
 import type { QimenLifetimeInput } from 'mingyu-core/types';
@@ -193,7 +193,10 @@ function buildResidentialInputs(input: QueryInputState, prompt: QueryPromptState
   });
 }
 
-export function buildQimenLifetimeInputs(input: QueryInputState): QimenLifetimeInput {
+export function buildQimenLifetimeInputs(
+  input: QueryInputState,
+  stageModel: QimenLifetimeStageModel = 'pillarFourLimits',
+): QimenLifetimeInput {
   let hour = 12;
   let minute = 0;
   if (input.useTrueSolarTime && input.birthHour !== '') {
@@ -217,10 +220,10 @@ export function buildQimenLifetimeInputs(input: QueryInputState): QimenLifetimeI
     method: 'zhuanpan',
     juMethod: 'chaibu',
     stagePolicy: {
-      model: 'pillarFourLimits',
+      model: stageModel,
       anchorRule: 'birthInstant',
       ageSystem: 'fullYears',
-      yearsPerStage: 15,
+      yearsPerStage: stageModel === 'decadalGanzhi' ? 10 : 15,
     },
     name: input.name,
     gender: input.gender,
@@ -267,7 +270,9 @@ export function buildReadingSubject(
     allowedMethods.push('qi-zheng');
   }
   if (prompt.promptSource === 'qimen-lifetime') {
-    lockedInputs['qimen-lifetime'] = { ...buildQimenLifetimeInputs(input) };
+    lockedInputs['qimen-lifetime'] = {
+      ...buildQimenLifetimeInputs(input, prompt.qimenLifetimeStageModel),
+    };
     allowedMethods.push('qimen-lifetime');
   }
   if (prompt.promptSource === 'bazhai') {
@@ -290,6 +295,7 @@ export function buildReadingSubject(
     residentialFlowYear: prompt.residentialFlowYear,
     residentialFlowMonth: prompt.residentialFlowMonth,
     residentialFlowDay: prompt.residentialFlowDay,
+    qimenLifetimeStageModel: prompt.qimenLifetimeStageModel,
   };
   const fingerprint = stableStringify({ source: prompt.promptSource, lockedInputs, range });
   return {

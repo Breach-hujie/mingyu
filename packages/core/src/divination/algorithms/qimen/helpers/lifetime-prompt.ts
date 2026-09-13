@@ -108,8 +108,17 @@ export function buildLifetimePrompt(
   );
   lines.push(`定局法则：${data.basis.juMethod === 'chaibu' ? '拆补法' : '置闰法'}`);
   lines.push(
-    `阶段模型：${data.basis.stagePolicy.model === 'pillarFourLimits' ? '传统四柱分限法（年柱初限、月柱中前限、日柱中后限、时柱末限）' : data.basis.stagePolicy.model === 'palaceWalk' ? '洛书九宫巡行法' : '符使卦轨大运法'}`,
+    `阶段模型：${data.basis.stagePolicy.model === 'pillarFourLimits' ? '传统四柱分限法（年柱初限、月柱中前限、日柱中后限、时柱末限）' : data.basis.stagePolicy.model === 'palaceWalk' ? '洛书九宫巡行法' : data.basis.stagePolicy.model === 'decadalGanzhi' ? '十年干支大运（八字交节起运合参奇门本命宫）' : '符使交替十年分段'}`,
   );
+  if (data.basis.decadalLuck) {
+    const luck = data.basis.decadalLuck;
+    const age = luck.startAge;
+    lines.push(
+      `起运：出生后${age.years}年${age.months}月${age.days}日${age.hours}时${age.minutes}分，${luck.startDateTime}交第一运，${luck.direction === 'forward' ? '顺行' : '逆行'}。`,
+    );
+    lines.push(`起运口径：${luck.rule}`, `定位口径：${luck.mapping}`);
+    lines.push('年龄为整岁展示，阶段归属以精确交运时间为准；交运年与交运日结合前后两运分别解读。');
+  }
   if (data.input.schools && data.input.schools.length > 0) {
     const schoolLabels: Record<string, string> = {
       baojian: '宝鉴派',
@@ -203,6 +212,9 @@ export function buildLifetimePrompt(
     );
     lines.push(`  主导宫位：${domNames}`);
     lines.push(`  阶段核心主线：${st.stageTheme}`);
+    if (st.startDateTime)
+      lines.push(`  精确区间：${st.startDateTime}起，至${st.endDateTimeExclusive}前。`);
+    if (st.ganzhi) lines.push(`  干支定位：${st.associatedMarkers.join('；')}`);
     if (st.supportFacts.length > 0) {
       lines.push(`  支持吉象：${st.supportFacts.join('；')}`);
     }
@@ -217,7 +229,7 @@ export function buildLifetimePrompt(
     lines.push(`【周期触发与事件簇】`);
     for (const ec of data.eventClusters) {
       lines.push(
-        `${ec.timeSpan}${ec.stageIndex === undefined ? '（阶段表范围外）' : ''} ${ec.triggerFact}（节奏：${ec.rhythm}）`,
+        `${ec.timeSpan}${ec.stageIndices?.length ? `（涉及阶段${ec.stageIndices.map((index) => index + 1).join('、')}）` : ec.stageIndex === undefined ? '（阶段表范围外）' : ''} ${ec.triggerFact}（节奏：${ec.rhythm}）`,
       );
       if (ec.triggerDates && ec.triggerDates.length > 0) {
         lines.push(...formatTriggerDates(ec.triggerDates));

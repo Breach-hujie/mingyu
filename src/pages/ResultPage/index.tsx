@@ -19,6 +19,7 @@ import {
   hasCompletePreciseBirthData,
   parseInputState,
   parsePromptState,
+  type QimenLifetimeStageModel,
   type QueryPromptState,
   type ResultTabKey,
 } from '@/lib/query-state';
@@ -128,6 +129,53 @@ import {
 } from 'mingyu-core/prompt';
 
 type FortuneScopePreset = 'default' | 'dayun' | 'year' | 'month' | 'day' | 'all' | 'manual';
+
+const QIMEN_LIFETIME_STAGE_MODEL_OPTIONS: readonly DropdownSelectOption<QimenLifetimeStageModel>[] =
+  [
+    {
+      value: 'pillarFourLimits',
+      label: '四柱分限（年、月、日、时四阶段）',
+      triggerLabel: '四柱分限',
+    },
+    {
+      value: 'decadalGanzhi',
+      label: '十年干支大运（交节起运合参）',
+      triggerLabel: '十年干支大运',
+    },
+    {
+      value: 'palaceWalk',
+      label: '九宫巡行（逐宫行限）',
+      triggerLabel: '九宫巡行',
+    },
+    {
+      value: 'fuShiHexagramOrbit',
+      label: '符使交替分段（每十年一段）',
+      triggerLabel: '符使交替分段',
+    },
+  ];
+
+const QIMEN_LIFETIME_STAGE_MODEL_DESCRIPTIONS: Record<QimenLifetimeStageModel, string> = {
+  pillarFourLimits: '按年、月、日、时柱划分四段人生主限。',
+  decadalGanzhi: '按八字交节起运与十年干支合参奇门本命宫。',
+  palaceWalk: '按九宫顺逆巡行，每步观察一段宫位气机。',
+  fuShiHexagramOrbit: '按值符、值使交替，每十年观察一段荣枯。',
+};
+
+function QimenLifetimeStageModelSelect(props: {
+  value: QimenLifetimeStageModel;
+  onChange: (value: QimenLifetimeStageModel) => void;
+}) {
+  return (
+    <DropdownSelect
+      value={props.value}
+      options={QIMEN_LIFETIME_STAGE_MODEL_OPTIONS}
+      onChange={props.onChange}
+      ariaLabel="奇门终身局分运模型"
+      prefix="分运"
+      variant="field"
+    />
+  );
+}
 
 function toPromptScope(scope: string) {
   return scope === 'origin' ? 'natal' : scope;
@@ -450,7 +498,8 @@ export function ResultPage({ assistantOnly = false }: ResultPageProps) {
     (((promptState.promptSource === 'bazi' || promptState.promptSource === 'bazi-ziwei') &&
       inputState.analysisMode === 'single') ||
       promptState.promptSource === 'ziwei' ||
-      promptState.promptSource === 'astrolabe');
+      promptState.promptSource === 'astrolabe' ||
+      promptState.promptSource === 'qimen-lifetime');
   const viewportSize = useViewportSize({ width: 0, height: 0 });
   const isCompactResultLayout = viewportSize.width > 0 && viewportSize.width < 980;
   const showEmbeddedAssistant = !isAssistantPage && !isCompactResultLayout;
@@ -1166,7 +1215,7 @@ export function ResultPage({ assistantOnly = false }: ResultPageProps) {
 
     try {
       const data = calculateQimenLifetime({
-        ...buildQimenLifetimeInputs(inputState),
+        ...buildQimenLifetimeInputs(inputState, promptState.qimenLifetimeStageModel),
         periodRange,
       });
       return { data, error: '' };
@@ -1176,7 +1225,12 @@ export function ResultPage({ assistantOnly = false }: ResultPageProps) {
         error: err instanceof Error ? err.message : '奇门终身局排盘失败。',
       };
     }
-  }, [inputState, qimenLifetimeCalculationRevision, shouldCalculateQimenLifetime]);
+  }, [
+    inputState,
+    promptState.qimenLifetimeStageModel,
+    qimenLifetimeCalculationRevision,
+    shouldCalculateQimenLifetime,
+  ]);
   const reloadQimenLifetimeCalculation = useCallback(() => {
     setQimenLifetimeCalculationRevision((value) => value + 1);
   }, []);
@@ -1998,7 +2052,7 @@ export function ResultPage({ assistantOnly = false }: ResultPageProps) {
     const range = qimenLifetimeCalculation.data.input.periodRange;
     const rangeKey = range ? `${range.startDate}-${range.endDate}` : 'current';
     return {
-      key: `qimen-lifetime:${inputSearch}:${rangeKey}`,
+      key: `qimen-lifetime:${inputSearch}:${promptState.qimenLifetimeStageModel}:${rangeKey}`,
       title: '奇门终身局完整资料',
       text: qimenLifetimePromptText,
       usable: true,
@@ -2009,6 +2063,7 @@ export function ResultPage({ assistantOnly = false }: ResultPageProps) {
     isQimenLifetimePromptSource,
     qimenLifetimeCalculation.data,
     qimenLifetimePromptText,
+    promptState.qimenLifetimeStageModel,
   ]);
 
   const readingResourceSeed = useMemo<ReadingMemorySeed | undefined>(() => {
@@ -2310,18 +2365,26 @@ export function ResultPage({ assistantOnly = false }: ResultPageProps) {
           disabled={!astrolabeCalculation.data}
         />
       ) : null}
+      {isQimenLifetimePromptSource ? (
+        <QimenLifetimeStageModelSelect
+          value={promptState.qimenLifetimeStageModel}
+          onChange={(value) => updatePromptState({ qimenLifetimeStageModel: value })}
+        />
+      ) : null}
       <small className="workspace-prompt-scope-summary">
-        {promptState.promptSource === 'ziwei'
-          ? ziweiScopeSummaryText
-          : promptState.promptSource === 'astrolabe'
-            ? promptState.astrolabeScope === 'natal'
-              ? '本命盘'
-              : `${promptState.astrolabeScopeDate || currentDateStr} · ${promptState.astrolabeScope === 'full' ? '各层行运' : promptState.astrolabeScope === 'yearly' ? '全年' : promptState.astrolabeScope === 'monthly' ? '整月' : '当日'}`
-            : promptState.baziFortuneScope === 'full'
-              ? '本命与全部大运流年'
-              : baziFortuneContext?.scope === 'dayun'
-                ? `${baziFortuneContext.displayLabel} · ${baziFortuneContext.cycleTimeRange.start.year}～${baziFortuneContext.cycleTimeRange.end.year}年`
-                : baziFortuneContext?.displayLabel || '本命盘与大运概览'}
+        {isQimenLifetimePromptSource
+          ? QIMEN_LIFETIME_STAGE_MODEL_DESCRIPTIONS[promptState.qimenLifetimeStageModel]
+          : promptState.promptSource === 'ziwei'
+            ? ziweiScopeSummaryText
+            : promptState.promptSource === 'astrolabe'
+              ? promptState.astrolabeScope === 'natal'
+                ? '本命盘'
+                : `${promptState.astrolabeScopeDate || currentDateStr} · ${promptState.astrolabeScope === 'full' ? '各层行运' : promptState.astrolabeScope === 'yearly' ? '全年' : promptState.astrolabeScope === 'monthly' ? '整月' : '当日'}`
+              : promptState.baziFortuneScope === 'full'
+                ? '本命与全部大运流年'
+                : baziFortuneContext?.scope === 'dayun'
+                  ? `${baziFortuneContext.displayLabel} · ${baziFortuneContext.cycleTimeRange.start.year}～${baziFortuneContext.cycleTimeRange.end.year}年`
+                  : baziFortuneContext?.displayLabel || '本命盘与大运概览'}
       </small>
     </div>
   ) : null;
@@ -2479,11 +2542,27 @@ export function ResultPage({ assistantOnly = false }: ResultPageProps) {
             qimenLifetimeCalculation.error ? (
               <p className="error-text">{qimenLifetimeCalculation.error}</p>
             ) : qimenLifetimeCalculation.data ? (
-              <QimenLifetimeBoard
-                title={isInstantResult ? '奇门终身即时盘' : '奇门终身局'}
-                name={isInstantResult ? '当前时刻' : inputState.name || '本人'}
-                data={qimenLifetimeCalculation.data}
-              />
+              <>
+                <section className="panel traditional-chart-card qimen-lifetime-toolbar-card">
+                  <div className="traditional-qimen-toolbar">
+                    <div className="traditional-qimen-actions">
+                      <span className="toolbar-title">分运模型：</span>
+                      <QimenLifetimeStageModelSelect
+                        value={promptState.qimenLifetimeStageModel}
+                        onChange={(value) => updatePromptState({ qimenLifetimeStageModel: value })}
+                      />
+                    </div>
+                    <span className="traditional-qimen-tip">
+                      {QIMEN_LIFETIME_STAGE_MODEL_DESCRIPTIONS[promptState.qimenLifetimeStageModel]}
+                    </span>
+                  </div>
+                </section>
+                <QimenLifetimeBoard
+                  title={isInstantResult ? '奇门终身即时盘' : '奇门终身局'}
+                  name={isInstantResult ? '当前时刻' : inputState.name || '本人'}
+                  data={qimenLifetimeCalculation.data}
+                />
+              </>
             ) : (
               <InlineSkeleton />
             )
@@ -2654,7 +2733,7 @@ export function ResultPage({ assistantOnly = false }: ResultPageProps) {
                       ? `${aiContextPrompt}\n${qimenReadingResource?.key ?? inputSearch}`
                       : aiContextPrompt,
                   )}
-                  resetKey={`${promptState.promptSource}-${promptState.baziFortuneScope}-${promptState.ziweiScope}`}
+                  resetKey={`${promptState.promptSource}-${promptState.baziFortuneScope}-${promptState.ziweiScope}-${promptState.qimenLifetimeStageModel}`}
                   externalInput={inspirationText}
                   onExternalInputConsumed={() => setInspirationText('')}
                   aiConfig={aiRequestConfig}

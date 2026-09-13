@@ -379,13 +379,15 @@ export const QimenLifetimeBoard = memo(function QimenLifetimeBoard({
         ) : null}
       </section>
 
-      {/* 4. 四柱分限人生运限卡 */}
+      {/* 4. 人生运限卡 */}
       <section className="panel traditional-chart-card qimen-lifetime-stages-card">
         <div className="stages-header">
           <div>
-            <h3>四柱分限阶段运限</h3>
+            <h3>人生阶段运限</h3>
             <p className="stages-subtitle">
-              依据传统年柱初限（0–16岁）、月柱中前限（17–32岁）、日柱中后限（33–48岁）、时柱末限（49+岁）推演人生宏观节奏。点击卡片可高亮主导宫位。
+              {data.basis.decadalLuck
+                ? `十年干支大运：${data.basis.decadalLuck.direction === 'forward' ? '顺行' : '逆行'}，${data.basis.decadalLuck.startDateTime}起运。八字交节起运合参奇门本命宫，年龄为整岁展示，交运以精确时间为准。`
+                : '按所选分限口径推演人生宏观节奏。点击卡片可高亮对应宫位。'}
             </p>
           </div>
         </div>
@@ -413,7 +415,13 @@ export const QimenLifetimeBoard = memo(function QimenLifetimeBoard({
                   </span>
                 </div>
                 <div className="stage-card-meta">
-                  <span className="stage-palaces">主导宫位：{domNames}</span>
+                  <span className="stage-palaces">对应宫位：{domNames || '参看本命局'}</span>
+                  <p>
+                    {stage.startDateTime
+                      ? `${stage.startDateTime}起，至${stage.endDateTimeExclusive}前`
+                      : `${stage.calendarStart} 至 ${stage.calendarEnd}`}
+                  </p>
+                  {stage.ganzhi ? <p>{stage.associatedMarkers.join('；')}</p> : null}
                   <p className="stage-theme">{stage.stageTheme}</p>
                 </div>
                 {stage.supportFacts.length > 0 ? (
@@ -458,7 +466,11 @@ export const QimenLifetimeBoard = memo(function QimenLifetimeBoard({
                 <div className="event-head">
                   <span className="event-time">
                     {cluster.timeSpan}
-                    {cluster.stageIndex === undefined ? '（阶段表范围外）' : ''}
+                    {cluster.stageIndices?.length
+                      ? `（涉及阶段${cluster.stageIndices.map((index) => index + 1).join('、')}）`
+                      : cluster.stageIndex === undefined
+                        ? '（阶段表范围外）'
+                        : ''}
                   </span>
                   <span className="event-trigger">{cluster.triggerFact}</span>
                   <span className="event-rhythm">节奏：{cluster.rhythm}</span>
