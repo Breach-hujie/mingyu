@@ -227,7 +227,11 @@ test('通用算命 Skill 必须覆盖十类核心业务场景的行为与降级�
 
   // 3. 一事一问：六爻承载事件与应期所需的主证据
   assert.match(routing, /六爻.*单一事件/);
-  assert.match(intake, /\| 六爻 \| 起卦时间、卦象、动爻、具体一事/);
+  const liuyaoIntake = intake
+    .split('\n')
+    .map((line) => line.split('|').map((cell) => cell.trim()))
+    .find((cells) => cells[1] === '六爻');
+  assert.equal(liuyaoIntake?.[2], '起卦时间、卦象、动爻、具体一事');
   assert.match(routing, /六爻负责当前成败与应期/);
 
   // 4. 方位谈判：时家奇门固定主体、主客动静和方位证据
