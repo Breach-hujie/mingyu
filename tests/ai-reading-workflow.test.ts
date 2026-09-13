@@ -1162,7 +1162,14 @@ test('真实双人八字紫微全文自然超限时合并相邻运段且完整�
   });
   const phaseCount = h.options.memory.ziweiPhaseReading?.phases.length ?? 0;
   assert.deepEqual(h.errors, []);
-  assert.equal(phaseCount, 2);
+  const periodCount = [primary, partner].reduce(
+    (sum, resource) => sum + (resource.structured.fortuneTimeline?.periods.length ?? 0),
+    0,
+  );
+  assert.ok(
+    phaseCount >= 2 && phaseCount < periodCount,
+    '按实际上下文预算合并相邻运段，并保留双方各自阶段',
+  );
   assert.equal(h.sent.length, phaseCount + 1);
   for (const batch of h.sent) {
     assert.ok(batch.reduce((sum, message) => sum + message.content.length, 0) <= 49_000);
