@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync, readFileSync } from 'node:fs';
 import {
   getToolCatalog,
   findTool,
@@ -9,6 +10,13 @@ import {
 } from '../../mcp/src/catalog/tool-catalog.js';
 import { birthInputSchema } from '../../mcp/src/schemas.js';
 import { createErrorToolResult, createStructuredToolResult } from '../../mcp/src/tool-results.js';
+
+test('MCP 独立发布包应声明命令入口和随包说明', () => {
+  const manifest = JSON.parse(readFileSync('packages/mcp/package.json', 'utf8'));
+  assert.equal(manifest.name, 'mingyu-mcp');
+  assert.equal(manifest.bin['mingyu-mcp'], './dist/server.js');
+  assert.ok(existsSync('packages/mcp/README.md'));
+});
 
 test('统一 Tool Catalog 应包含所有核心工具并声明元数据注解', () => {
   const catalog = getToolCatalog();

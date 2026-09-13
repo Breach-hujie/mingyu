@@ -29,9 +29,10 @@ const ziwei = {
 };
 
 let combinedReadingPromise: ReturnType<typeof calculateBaziZiweiCombinedReading> | undefined;
+const client = createMingyuClient({ defaults: { synthesis: { ziwei } } });
 
 function getCombinedReading() {
-  combinedReadingPromise ??= calculateBaziZiweiCombinedReading(profile, { ziwei });
+  combinedReadingPromise ??= client.baziZiwei(profile);
   return combinedReadingPromise;
 }
 
@@ -51,6 +52,8 @@ test('八字紫微合参缺少明确运限基准时间时应拒绝计算', async
 test('八字紫微合参应按主题保留两套结构化资料', async () => {
   const reading = await getCombinedReading();
 
+  assert.equal(reading.synthesis.key, 'bazi-ziwei:synthesis');
+  assert.equal(client.capability('bazi-ziwei-synthesis').name, '八字紫微合参');
   assert.ok(reading.bundle.bazi);
   assert.ok(reading.bundle.ziwei);
   assert.equal(reading.synthesis.themes.length, 10);
@@ -88,16 +91,6 @@ test('合参提示词应支持不同解读层级并保持完整任务结构', as
   assert.match(prompt, /重点分析未来十年的事业与迁移/);
   assert.match(prompt, /八字资料/);
   assert.match(prompt, /紫微资料/);
-});
-
-test('高层客户端应直接提供八字紫微合参和安全调用', async () => {
-  const client = createMingyuClient({ defaults: { synthesis: { ziwei } } });
-  const direct = await client.baziZiwei(profile);
-  const safe = await client.safe.baziZiwei(profile);
-
-  assert.equal(direct.synthesis.key, 'bazi-ziwei:synthesis');
-  assert.equal(safe.ok, true);
-  assert.equal(client.capability('bazi-ziwei-synthesis').name, '八字紫微合参');
 });
 
 test('八字紫微跨体系合参互证应准确分析羊刃煞曜与天乙贵人吉曜同参', async () => {

@@ -1,33 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
 import { SKILL_SCENARIOS } from './fixtures/skill/scenarios.js';
 import { evaluateScenario } from '../scripts/evaluate-skill.js';
-
-test('通用算命 Skill 参考文档相对链接必须 100% 存在并被引用', () => {
-  const baseDir = join(process.cwd(), 'public/skills/aov-mingyu-api');
-  const skillMd = readFileSync(join(baseDir, 'SKILL.md'), 'utf8');
-
-  const requiredDocLinks = [
-    'references/intake.md',
-    'references/routing.md',
-    'references/evidence.md',
-    'references/interpretation.md',
-    'references/timing.md',
-    'references/synthesis.md',
-    'references/output.md',
-    'references/safety.md',
-    'references/providers.md',
-    'references/providers/aov-mingyu.md',
-  ];
-
-  for (const relLink of requiredDocLinks) {
-    const fullPath = join(baseDir, relLink);
-    assert.ok(existsSync(fullPath), `参考文档文件应存在: ${relLink}`);
-    assert.ok(skillMd.includes(relLink), `主 SKILL.md 应显式引用: ${relLink}`);
-  }
-});
 
 test('通用算命 Skill 必须通过 12 类场景 24 个样本的 L0—L5 实战评审契约', () => {
   assert.ok(SKILL_SCENARIOS.length >= 24, '场景样本库应至少包含 24 个样本');

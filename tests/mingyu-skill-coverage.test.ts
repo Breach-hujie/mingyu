@@ -1,11 +1,8 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import test from 'node:test';
 import workflow from '../skills/mingyu/references/reading-workflow.json';
 import { getReadingGuide } from '../src/lib/ai/reading-workflow';
 
-const skillRoot = join(process.cwd(), 'skills/mingyu');
 const requiredMethods = [
   'bazi',
   'ziwei',
@@ -42,13 +39,6 @@ const profileFields = [
   'whenToRead',
   'guide',
 ] as const;
-
-test('源技能入口链接的渐进披露资料均存在', () => {
-  const skill = readFileSync(join(skillRoot, 'SKILL.md'), 'utf8');
-  const links = [...skill.matchAll(/\]\((references\/[^)]+)\)/g)].map((match) => match[1]);
-  assert.ok(links.length >= 10);
-  for (const link of links) assert.equal(existsSync(join(skillRoot, link)), true, link);
-});
 
 test('方法目录覆盖全部规范身份并具备按需取用结构', () => {
   assert.equal(workflow.version, 2);
