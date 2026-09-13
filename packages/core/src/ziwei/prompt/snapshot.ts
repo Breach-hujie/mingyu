@@ -118,7 +118,7 @@ export function buildPromptContextSnapshot(params: {
           : undefined,
     },
     命盘格局: buildPatternSummary(payload),
-    运限结构: buildScopeStructureSummary(payload).slice(0, 8),
+    运限结构: buildScopeStructureSummary(payload),
     重点宫位摘要: focusPalaces.map((item) => buildPalaceSummary(payload, item)),
     全盘宫位索引: buildPalaceIndex(payload),
   };

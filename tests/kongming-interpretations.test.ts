@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  calculateZhugeNumber,
   castKongmingHexagram,
   getKongmingInterpretation,
 } from '../packages/core/src/name-number/index.ts';
 import { formatEnhancedDivinationInfo } from '../packages/core/src/prompt/divination-enhanced.ts';
+import { buildDivinationPrompt } from '../packages/core/src/prompt/divination.ts';
 
 test('孔明32卦均有与本卦诗句对应的独立释义及转机条件', () => {
   const readings = new Set<string>();
@@ -79,4 +81,37 @@ test('旧孔明结果可由既有卦象恢复释义且随机重放一致', () =>
   assert.ok(prompt.includes(first.interpretation.interpretation));
   assert.throws(() => getKongmingInterpretation('constructor'), /未找到/);
   assert.throws(() => getKongmingInterpretation('●○'), /未找到/);
+});
+
+test('孔明提示词只保留签谱资料字段', () => {
+  const prompt = formatEnhancedDivinationInfo('kongming', castKongmingHexagram('●○○○○'));
+  assert.match(prompt, /签号：第2签/);
+  assert.match(prompt, /签题：从革卦/);
+  assert.match(prompt, /签诗：/);
+  assert.match(prompt, /吉凶级别：/);
+  assert.match(prompt, /典故：/);
+  assert.match(prompt, /基础解签：/);
+  assert.match(prompt, /补充解释：/);
+  assert.doesNotMatch(
+    prompt,
+    /占法：|五枚硬币：|卦序：|卦名：|等第：|卦诗：|诗句取象：|基础解卦：|卦名取象：/,
+  );
+});
+
+test('诸葛与孔明完整提示词不重复任务或加入当前时间', () => {
+  const cases = [
+    { method: 'zhuge' as const, data: { text: '顺其然' } },
+    { method: 'kongming' as const, data: castKongmingHexagram('●○○○○') },
+  ];
+  for (const item of cases) {
+    const data = item.method === 'zhuge' ? calculateZhugeNumber(item.data.text) : item.data;
+    const prompt = buildDivinationPrompt({
+      method: item.method,
+      data,
+      question: '这件事如何推进？',
+    });
+    assert.doesNotMatch(prompt, /【当前时间】|占法：|所写三字|康熙笔画|五枚硬币|取数过程/u);
+    const task = /【任务】\n([\s\S]*?)(?=\n\n【问题】)/u.exec(prompt)?.[1] ?? '';
+    assert.equal((task.match(/依据/gu) ?? []).length, 1);
+  }
 });

@@ -148,35 +148,74 @@ const SOURCE_METHODS: Record<ReadingSubjectSnapshot['source'], string[]> = {
   wuyun: ['wuyun'],
 };
 
-function resolveReadingMethod(method?: string) {
+const READING_METHOD_ALIASES: Record<string, readonly string[]> = workflow.aliases;
+
+function resolveReadingMethods(method?: string): readonly string[] {
   const normalized = method?.trim();
-  if (!normalized) return undefined;
-  if (normalized === 'huangji-jingshi') return 'huangji';
-  return Object.hasOwn(workflow.methods, normalized) ? normalized : undefined;
+  if (!normalized) return [];
+  if (Object.hasOwn(workflow.methods, normalized)) return [normalized];
+  return READING_METHOD_ALIASES[normalized] ?? [];
 }
 
 export function getReadingGuide(
   text: string,
   subject?: ReadingSubjectSnapshot,
   readingMethod?: string,
+  context: { stage?: 'preparing' | 'writing'; question?: string; timing?: boolean } = {},
 ) {
-  const explicitMethods = subject ? SOURCE_METHODS[subject.source] : undefined;
-  const explicitReadingMethod = resolveReadingMethod(readingMethod);
+  const explicitMethods =
+    subject?.source === 'astrolabe' && subject.lockedInputs.astrolabePartner
+      ? resolveReadingMethods('astrolabe-synastry')
+      : subject
+        ? SOURCE_METHODS[subject.source]
+        : undefined;
+  const explicitReadingMethods = resolveReadingMethods(readingMethod);
   const hasReadingMethod = Boolean(readingMethod?.trim());
-  const methods = explicitMethods?.length
+  const selectedMethods = explicitMethods?.length
     ? explicitMethods
         .map((method) => workflow.methods[method as keyof typeof workflow.methods])
         .filter((item): item is (typeof workflow.methods)[keyof typeof workflow.methods] =>
           Boolean(item),
         )
     : hasReadingMethod
-      ? explicitReadingMethod
-        ? [workflow.methods[explicitReadingMethod as keyof typeof workflow.methods]]
-        : []
+      ? explicitReadingMethods
+          .map((method) => workflow.methods[method as keyof typeof workflow.methods])
+          .filter(Boolean)
       : Object.entries(workflow.methods)
           .filter(([, item]) => item.match.some((keyword) => text.includes(keyword)))
           .map(([, item]) => item);
-  const hasQimenLifetimeGuide = methods.some((item) => item.label === '奇门终身局');
+  const hasQimenLifetimeGuide = selectedMethods.some((item) => item.label === '奇门终身局');
+  const methods = [...new Set(selectedMethods)].filter(
+    (item) => !(hasQimenLifetimeGuide && item.label === '奇门遁甲'),
+  );
+  const hasTimeScope =
+    hasQimenLifetimeGuide ||
+    context.timing ||
+    isTimeReadingFollowup(context.question ?? '') ||
+    Object.entries(subject?.range ?? {}).some(
+      ([key, value]) =>
+        /Scope$/u.test(key) && typeof value === 'string' && !['natal', 'origin'].includes(value),
+    );
+  const sections =
+    context.stage === 'preparing'
+      ? (['scope', 'evidence', 'conditions'] as const)
+      : (['evidence', 'conditions', 'review'] as const);
+  const sectionLabels = {
+    scope: '取用范围',
+    evidence: '推导依据',
+    conditions: '成立条件',
+    review: '结论核对',
+    timing: '时间层级',
+  };
+  const methodDetails = methods.flatMap((item) => {
+    const profile = item as typeof item &
+      Partial<Record<keyof typeof sectionLabels, string | string[]>>;
+    return [...sections, ...(hasTimeScope ? ['timing' as const] : [])].flatMap((key) => {
+      const value = profile[key];
+      const lines = Array.isArray(value) ? value : value ? [value] : [];
+      return lines.length ? [`${item.label}${sectionLabels[key]}：${lines.join('；')}`] : [];
+    });
+  });
   const imageGuides = [
     ...new Set(
       methods
@@ -189,6 +228,7 @@ export function getReadingGuide(
     '【解读方法】',
     ...workflow.principles,
     ...methods.map((item) => `${item.label}：${item.guide}`),
+    ...methodDetails,
     ...(imageGuides.length ? [`奇门取象、换象与造象：${imageGuides.join('\n')}`] : []),
   ].join('\n');
 }
@@ -1204,7 +1244,18 @@ function buildZiweiPhasePlan(
     ...draft,
     resourceKey,
     subjectTitle: resourceTitle,
-    summaryLabel: `主体：${resourceTitle}｜阶段${index + 1}/${packedDrafts.length}`,
+    summaryLabel: `主体：${resourceTitle}｜阶段${index + 1}/${packedDrafts.length}｜运限日期：${draft.selection
+      .map((selection) => {
+        const period = timeline.periods[selection.periodIndex];
+        return period.years
+          .slice(selection.startYearIndex, selection.endYearIndex + 1)
+          .map(
+            (year) =>
+              `${year.label} ${year.ganZhi}（${year.dateStr}至${year.endDateStr ?? year.dateStr}）`,
+          )
+          .join('、');
+      })
+      .join('；')}`,
     facts: formatZiweiPhaseFacts(result, draft, index + 1, packedDrafts.length, resourceTitle),
   }));
   for (const phase of phases) {
@@ -1535,10 +1586,27 @@ export async function runReadingWorkflow(
   const guard = () => {
     if (options.signal?.aborted) throw new DOMException('已停止解读', 'AbortError');
   };
-  const guide = getReadingGuide(messages[0]?.content ?? '', options.subject, options.readingMethod);
-  const explicitReadingMethod = resolveReadingMethod(options.readingMethod);
+  const explicitReadingMethods = resolveReadingMethods(options.readingMethod);
   const latestUserQuestion =
     [...messages].reverse().find((message) => message.role === 'user')?.content ?? '';
+  const guide = getReadingGuide(
+    messages[0]?.content ?? '',
+    options.subject,
+    options.readingMethod,
+    {
+      stage: 'writing',
+      question: latestUserQuestion,
+    },
+  );
+  const planningGuide = getReadingGuide(
+    messages[0]?.content ?? '',
+    options.subject,
+    options.readingMethod,
+    {
+      stage: 'preparing',
+      question: latestUserQuestion,
+    },
+  );
   const hasPreviousAnswer = messages.some((message) => message.role === 'assistant');
   const isTimeFollowup = hasPreviousAnswer && isTimeReadingFollowup(latestUserQuestion);
   const isSimpleFollowup =
@@ -1559,7 +1627,11 @@ export async function runReadingWorkflow(
         ...(options.subject.source === 'qizheng' ? ['qi-zheng'] : []),
       ])
     : options.readingMethod?.trim()
-      ? new Set(explicitReadingMethod ? [explicitReadingMethod] : [])
+      ? new Set([
+          ...explicitReadingMethods,
+          ...(explicitReadingMethods.includes('qizheng') ? ['qi-zheng'] : []),
+          ...(explicitReadingMethods.includes('astrolabe-synastry') ? ['astrolabe'] : []),
+        ])
       : undefined;
   const mismatchedMethodNotice = options.subject
     ? '已跳过与当前命盘类型不符的补充资料。'
@@ -1675,11 +1747,11 @@ export async function runReadingWorkflow(
         planningMessages,
         resources,
         (selected, omitted) =>
-          `${guide}${currentTimeContext}${schemas}${formatCapacityNotice('资料准备', omitted)}\n\n${formatReadingResources(selected)}`,
+          `${planningGuide}${currentTimeContext}${schemas}${formatCapacityNotice('资料准备', omitted)}\n\n${formatReadingResources(selected)}`,
       );
       const prepared = fitReadingMessages(
         planningMessages,
-        `${guide}${currentTimeContext}${schemas}${formatCapacityNotice('资料准备', planningSelection.omitted)}\n\n${formatReadingResources(planningSelection.selected)}`,
+        `${planningGuide}${currentTimeContext}${schemas}${formatCapacityNotice('资料准备', planningSelection.omitted)}\n\n${formatReadingResources(planningSelection.selected)}`,
       );
       let actions: ReadingAction[];
       try {

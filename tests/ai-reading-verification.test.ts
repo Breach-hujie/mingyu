@@ -41,6 +41,48 @@ test('正确事实、否定句和跨盘十神不误报', () => {
   assert.deepEqual(verifyReadingAnswer(`${chart}\n${chart}`, '另一位日主甲为正官。'), []);
 });
 
+test('单盘整柱错置可以检出，假设示例与其他时层保持各自上下文', () => {
+  assert.ok(
+    verifyReadingAnswer(chart, '原局年柱是辛巳，月柱为庚午。').some((issue) =>
+      issue.includes('原局年柱为庚午'),
+    ),
+  );
+  assert.deepEqual(verifyReadingAnswer(chart, '年柱庚午，月柱辛巳，日柱庚辰，时柱甲申。'), []);
+  assert.deepEqual(verifyReadingAnswer(chart, '例如年柱甲子，可据此讲解纳音。'), []);
+  assert.deepEqual(verifyReadingAnswer(chart, '2026年流年柱丙午。'), []);
+  assert.deepEqual(verifyReadingAnswer(chart, '原局年柱不是甲子。'), []);
+  assert.deepEqual(verifyReadingAnswer(`${chart}\n${chart}`, '另一位年柱甲子。'), []);
+});
+
+test('整柱校验区分运限柱并覆盖常见的整柱干支表述', () => {
+  assert.deepEqual(
+    verifyReadingAnswer(chart, '流年柱丙午，流月柱丙午；去年年柱丙午；大运年柱丙午。'),
+    [],
+  );
+  assert.deepEqual(verifyReadingAnswer(chart, '原局年柱为：庚午，原局月柱是：辛巳。'), []);
+  assert.deepEqual(verifyReadingAnswer(chart, '原局年柱干支为：庚午，出生月柱干支是：辛巳。'), []);
+  assert.ok(
+    verifyReadingAnswer(chart, '原局年柱为：丙午。').some((issue) =>
+      issue.includes('原局年柱为庚午'),
+    ),
+  );
+  assert.ok(
+    verifyReadingAnswer(chart, '原局年柱是：丙午。').some((issue) =>
+      issue.includes('原局年柱为庚午'),
+    ),
+  );
+  assert.ok(
+    verifyReadingAnswer(chart, '出生年柱为：丙午。').some((issue) =>
+      issue.includes('原局年柱为庚午'),
+    ),
+  );
+  assert.ok(
+    verifyReadingAnswer(chart, '原局年柱干支为丙午。').some((issue) =>
+      issue.includes('原局年柱为庚午'),
+    ),
+  );
+});
+
 test('引用与实际查询条文对照，概括取义不当成引文', () => {
   const resources = [
     { key: 'classic', title: '传统条文：庚', text: '原文：庚金带煞，刚健为最。', usable: true },

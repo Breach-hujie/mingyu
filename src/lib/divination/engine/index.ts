@@ -240,6 +240,7 @@ export function buildDivinationPrompt(
     method === 'astrolabe'
       ? question.trim() || getAstrolabeDefaultQuestion(astrolabeTopic, { isCustomQuestion })
       : question;
+  const isSignPrompt = method === 'zhuge' || method === 'kongming';
   const timeInfo = method === 'astrolabe' ? buildSolarTimeInfoText(data) : buildTimeInfoText(data);
   const infoText = formatDivinationInfo(method, data, normalizedQuestion, supplementaryInfo, {
     liuyaoTemplate,
@@ -264,15 +265,20 @@ export function buildDivinationPrompt(
     method === 'liuyao'
       ? buildSection('【问题范围】', buildLiuyaoTemplateText(liuyaoTemplate))
       : '';
-  const baseTaskText =
-    method === 'astrolabe' && !isCustomQuestion
+  const baseTaskText = isSignPrompt
+    ? ''
+    : method === 'astrolabe' && !isCustomQuestion
       ? buildPromptTask(buildAstrolabeTopicTask(astrolabeTopic), 'astrolabe')
       : method === 'tarot'
         ? buildTarotSpreadTask(data as TarotData)
         : method === 'lenormand' && (data as LenormandData).cards.length === 1
           ? buildPromptTask('依据唯一牌位与基础牌义回答【问题】。', 'lenormand-single')
           : buildTaskText(method, data);
-  const taskText = selection ? buildPromptSelectionTask(baseTaskText, selection) : baseTaskText;
+  const taskText = isSignPrompt
+    ? buildPromptTask('', method)
+    : selection
+      ? buildPromptSelectionTask(baseTaskText, selection)
+      : baseTaskText;
   const promptSchoolMethod =
     method === 'huangji' ? 'huangji-jingshi' : method === 'wuyun' ? 'wuyun-liuqi' : method;
   const selectedSchools = options.schools?.length
@@ -314,7 +320,7 @@ export function buildDivinationPrompt(
 
   return [
     singleCardGuidance || buildPromptGuidanceSections(method),
-    buildSection('【当前时间】', timeInfo),
+    isSignPrompt ? '' : buildSection('【当前时间】', timeInfo),
     options.timeContextText ? buildSection('【起局时间口径】', options.timeContextText) : '',
     supplementarySection ? buildSection('【补充信息】', supplementarySection) : '',
     astrolabeScopeText ? buildSection('【分析对象】', astrolabeScopeText) : '',

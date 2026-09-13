@@ -84,3 +84,23 @@ test('诸葛释义保留完整签谱并拒绝非法签号', () => {
   assert.match(getZhugeInterpretation(380)!.classicalImage!, /论语·述而.*内在之乐/);
   assert.match(getZhugeInterpretation(384)!.classicalImage!, /左传·宣公二年.*过而能改/);
 });
+
+test('诸葛提示词只保留签谱资料字段', () => {
+  const digitCharacters = new Map<number, string>();
+  for (const row of CHARACTER_TUPLES)
+    if (!digitCharacters.has(row[2] % 10)) digitCharacters.set(row[2] % 10, row[0]);
+  const result = calculateZhugeNumber(
+    [0, 0, 1].map((digit) => digitCharacters.get(digit)!).join(''),
+  );
+  const prompt = formatEnhancedDivinationInfo('zhuge', result);
+  assert.equal(result.number, 1);
+  assert.match(prompt, new RegExp(`签号：第${result.number}签`));
+  assert.match(prompt, /签诗：/);
+  assert.match(prompt, /典故：/);
+  assert.match(prompt, /基础解签：/);
+  assert.match(prompt, /补充解释：/);
+  assert.doesNotMatch(
+    prompt,
+    /占法：|所写三字：|康熙笔画：|取数：|基础解意：|诗句取象：|典故取象：/,
+  );
+});

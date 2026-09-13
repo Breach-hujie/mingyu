@@ -31,7 +31,12 @@ function formatGodLocations(data: LiurenData, god: string) {
     ? plateHits.map((item) => `天盘${item.branch}下临地盘${item.under}`).join('、')
     : '未见';
   const lessonText = lessonHits.length
-    ? lessonHits.map((item) => `${item.name}${item.upper}临${item.lower}`).join('、')
+    ? lessonHits
+        .map(
+          (item) =>
+            `${item.name}${item.upper}临${item.lower}${item.relation ? `（${item.relation}）` : ''}`,
+        )
+        .join('、')
     : '未见';
   const transmissionText = transmissionHits.length
     ? transmissionHits
@@ -61,6 +66,14 @@ export function buildLiurenTemplateText(template: LiurenTemplateType, data: Liur
     shiye: '类神：事业看贵人、朱雀、青龙；日干为我、日支为事务',
     caifu: '类神：财运看青龙、太常、天空；日干为我、日支为财源或交易',
   };
+  const topicCheckMap: Record<Exclude<LiurenTemplateType, 'general'>, string> = {
+    ganqing:
+      '候选角色核对：先以日干与日支分别参照我方和关系事项，再逐项核对天后、六合、青龙在天地盘、四课、三传中的实际位置及乘支旺衰、空亡',
+    shiye:
+      '候选角色核对：先按问题确认求测者、岗位或事务对象，再逐项核对贵人、朱雀、青龙在天地盘、四课、三传中的实际位置及乘支旺衰、空亡',
+    caifu:
+      '候选角色核对：先按问题确认收益、财源或交易对象，再逐项核对青龙、太常、天空在天地盘、四课、三传中的实际位置及乘支旺衰、空亡',
+  };
   const safeTemplate = templateLabelMap[template] ? template : 'general';
 
   if (safeTemplate === 'general') {
@@ -68,5 +81,5 @@ export function buildLiurenTemplateText(template: LiurenTemplateType, data: Liur
   }
 
   const locations = TOPIC_GODS[safeTemplate].map((god) => formatGodLocations(data, god)).join('；');
-  return `${templateLabelMap[safeTemplate]}；${mainLineMap[safeTemplate]}；事项类神盘面定位：${locations}；初传保持发用结构，事项类神按上述盘面定位与三传条件合看`;
+  return `${templateLabelMap[safeTemplate]}；${mainLineMap[safeTemplate]}；${topicCheckMap[safeTemplate]}；事项类神盘面定位：${locations}；初传保持发用结构，事项类神按上述盘面定位与三传条件合看`;
 }

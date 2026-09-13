@@ -79,6 +79,33 @@ const TOPIC_LABELS: Record<BaziPromptTopic, string> = {
   talent: '天赋',
 };
 
+const TOPIC_FACT_FOCUS: Partial<Record<BaziPromptTopic, string>> = {
+  career: '月令、官杀、印星、财星与驿马',
+  'job-change': '月令、官杀、印星、驿马与冲合关系',
+  'startup-partnership': '财星、官杀、比劫、财库与合作关系',
+  'investment-partnership': '财星、财库、比劫及合冲刑害',
+  wealth: '财星、财库、比劫与身强身弱条件',
+  marriage: '日支夫妻宫、配偶星及合冲刑害',
+  relationship: '日支夫妻宫、配偶星与合冲刑害',
+  'relationship-push': '日支夫妻宫、配偶星与合冲关系',
+  'relationship-decision': '日支夫妻宫、配偶星与制约关系',
+  'reconciliation-decision': '日支夫妻宫、配偶星与合冲刑害',
+  children: '子女星、时柱与食伤',
+  family: '年柱、月柱、六亲十神与原局干支关系',
+  'home-move': '日支、财库与冲合刑害',
+  'settle-relocate': '迁移取象、日支与驿马',
+  social: '比劫、食伤与合冲刑害',
+  emotion: '日主旺衰、印星食伤与五行偏枯',
+  health: '五行偏枯、日主旺衰与地支刑冲',
+  parents: '年柱月柱与印星财星',
+  study: '印星、食伤与官星',
+  'study-advance': '印星、食伤与官星',
+  'exam-landing': '印星、食伤与官星',
+  growth: '日主旺衰、格局取用与原局关系',
+  talent: '日主、食伤、印星、格局与五行作用方向',
+  recent: '【分析对象】所列层级的实际干支、关系与取用',
+};
+
 function formatFullFortune(result: BaziChartResult) {
   return result ? formatBaziFullFortune(result) : '';
 }
@@ -125,6 +152,13 @@ function getBaziTopicTask(topic: BaziPromptTopic, topicLabel: string): string {
   }
 }
 
+export function formatBaziTopicFocus(topic: BaziPromptTopic) {
+  const focus = TOPIC_FACT_FOCUS[topic];
+  return focus
+    ? `优先核对${TOPIC_LABELS[topic]}相关的${focus}；其余已列四柱、取用和关系资料继续作为交叉依据。`
+    : '';
+}
+
 export function buildBaziPromptDocument(options: BaziPromptOptions): PromptDocument {
   const topic = options.topic ?? 'general';
   const topicLabel = TOPIC_LABELS[topic];
@@ -140,6 +174,9 @@ export function buildBaziPromptDocument(options: BaziPromptOptions): PromptDocum
     options.fortuneScope === 'natal' ? 'general' : 'fortune',
   );
   const fortuneSelection = formatBaziFortuneSelection(options.fortuneSelectionContext);
+  const fortuneFocus = [options.fortuneFocus?.trim(), fortuneSelection?.focus.trim()]
+    .filter(Boolean)
+    .join('\n');
   const scopeText = fortuneSelection
     ? fortuneSelection.analysisObject
     : options.fortuneScope && options.fortuneScope !== 'natal'
@@ -166,6 +203,7 @@ export function buildBaziPromptDocument(options: BaziPromptOptions): PromptDocum
     buildPromptGuidance('bazi'),
     buildPromptSection('当前时间', formatPromptCurrentTime(options.currentTime)),
     buildPromptSection('排盘信息', chart),
+    formatBaziTopicFocus(topic) ? buildPromptSection('主题取用', formatBaziTopicFocus(topic)) : '',
     focusSection,
     selectedSchools.length
       ? buildPromptSection(
@@ -176,8 +214,7 @@ export function buildBaziPromptDocument(options: BaziPromptOptions): PromptDocum
         ? buildPromptSection('流派', formatBaziSchoolPrompt(options.result, options.school))
         : '',
     buildPromptSection('分析对象', scopeText),
-    options.fortuneFocus ? buildPromptSection('岁运重点', options.fortuneFocus) : '',
-    fortuneSelection ? buildPromptSection('岁运重点', fortuneSelection.focus) : '',
+    fortuneFocus ? buildPromptSection('岁运重点', fortuneFocus) : '',
     options.fortuneScope === 'full'
       ? buildPromptSection('命限资料', formatFullFortune(options.result))
       : '',

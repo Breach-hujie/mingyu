@@ -42,6 +42,9 @@ test('本命八字提示词的任务范围不越过已列岁运资料', () => {
 
   assert.match(task, /四柱原局/);
   assert.doesNotMatch(task, /大运|流年|岁运|具体干支时段/);
+  const focus = prompt.match(/【主题取用】\n([^\n]+)/)?.[1] ?? '';
+  assert.match(focus, /月令、官杀、印星、财星/);
+  assert.doesNotMatch(focus, /大运|流年|岁运/);
 });
 
 test('梅花与皇极任务模板按实际输入资料收窄', () => {

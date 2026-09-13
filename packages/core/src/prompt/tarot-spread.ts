@@ -112,7 +112,10 @@ const GENERIC_TAROT_SPREAD_PROMPT_FRAMEWORK: TarotSpreadPromptFramework = {
 export function buildTarotSpreadTask(data: Pick<TarotData, 'spreadType' | 'cards'>) {
   const isSingleCard = data.cards.length === 1;
   if (isSingleCard) {
-    return buildPromptTask('依据唯一牌位、正逆位与单牌牌义回答【问题】。', 'tarot-single');
+    return buildPromptTask(
+      '依据唯一牌位、牌名、正逆位、关键词与单牌牌义回答【问题】。',
+      'tarot-single',
+    );
   }
   const framework =
     TAROT_SPREAD_PROMPT_FRAMEWORKS[data.spreadType as TarotSpreadType] ??
@@ -120,6 +123,7 @@ export function buildTarotSpreadTask(data: Pick<TarotData, 'spreadType' | 'cards
   return buildPromptTask(
     [
       '依据牌阵、牌位、正逆位与牌序组合回答【问题】。',
+      '事实核对：逐张对应牌位、牌名、正逆位、关键词与基础牌义；牌位职能作为该牌落到问题中的条件。',
       `解读主线：${framework.mainLine}`,
       `牌位联动：${framework.connections}`,
       `结论重点：${framework.conclusion}`,

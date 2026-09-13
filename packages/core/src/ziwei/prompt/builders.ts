@@ -286,7 +286,9 @@ export function buildScopeHitSummary(payload: AnalysisPayloadV1) {
   const focusLine = currentPalace
     ? `${payload.active_scope.label || scopeLabel}当前落宫为本命${formatPalaceName(currentPalace.name)}。`
     : '';
-  return [focusLine, ...landingLines.slice(0, 6), ...mutagenLines.slice(0, 8)];
+  // 运限落宫和四化可能在同一层多次命中；完整保留，避免把第七条以后
+  // 的实际命中静默裁掉。正文已经用行级事实组织，不需要靠截断压缩。
+  return [focusLine, ...landingLines, ...mutagenLines];
 }
 
 export function buildPalaceIndex(payload: AnalysisPayloadV1) {

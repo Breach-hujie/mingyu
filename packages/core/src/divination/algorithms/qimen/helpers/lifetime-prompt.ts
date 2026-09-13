@@ -8,6 +8,7 @@ import type { QimenLifetimeData } from '../../../../types/divination';
 import { formatFixedTimezoneOffset } from '../../../../calendar/civil-time';
 import { QIMEN_IMAGE_INTERPRETATION_TASK } from '../../../../prompt/qimen-interpretation';
 import { formatQimenStemLocations } from '../../../../prompt/qimen-facts';
+import { buildPromptTask } from '../../../../prompt/guidance';
 
 type TriggerDate = NonNullable<
   NonNullable<QimenLifetimeData['eventClusters']>[number]['triggerDates']
@@ -255,7 +256,10 @@ export function buildLifetimePrompt(
     '终身局取象以本命为根，阶段与流年各用本层已列盘面；换象与造象分别说明适用的人生主题和时间层级。',
   );
   lines.push(
-    `请依据奇门遁甲本命局、个人标记、阶段运限与事件动态推演终身格局与大限走向。先综述先天格局底色，再按人生阶段依次展开运限分析，最后结合流年触发窗口回答【问题】。先给出明确的倾向或吉凶定性，再说明主要理据及其生克演变；涉及阶段变化时，依据已列干支时段、节令或时间层级说明。`,
+    buildPromptTask(
+      '请依据奇门遁甲本命局、个人标记、阶段运限与事件动态推演终身格局与大限走向。先综述先天格局底色，再按人生阶段依次展开运限分析，最后结合流年触发窗口回答【问题】。阶段变化分别采用所列干支时段、交接日期与时间层级。',
+      'qimen',
+    ),
   );
   lines.push('');
 

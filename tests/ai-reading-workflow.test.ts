@@ -1030,6 +1030,9 @@ test('紫微结构化时间线超限时按完整阶段事实逐段解读并汇�
   assert.match(h.sent[1]![0]!.content, /阶段 2\/2/);
   assert.match(h.sent[1]![0]!.content, /流年2001/);
   assert.match(h.sent[2]![0]!.content, /1\/2、2\/2/);
+  // 即使阶段回答省略日期，汇总仍带入原资料的年份、干支和起止边界。
+  assert.match(h.sent[2]![0]!.content, /流年2000 甲子（2000-01-01至2000-12-31）/);
+  assert.match(h.sent[2]![0]!.content, /流年2001 甲子（2001-01-01至2001-12-31）/);
   assert.equal(h.options.memory.resources[0], resource);
   assert.equal(
     h.options.memory.ziweiPhaseReading?.phases.every((item) => item.status === 'succeeded'),

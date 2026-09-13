@@ -184,13 +184,14 @@ test('通用算命 Skill 应具备完整的方法论参考文件与架构引用'
 });
 
 test('主 Skill 入口应与底层数据提供方解耦，聚焦方法论工作流', () => {
-  // 必须包含核心工作流生命周期与首轮判断
-  assert.match(publicSkill, /标准任务生命周期/);
-  assert.match(publicSkill, /首轮判断规则/);
-  assert.match(publicSkill, /术数选择全景引导矩阵/);
-  assert.match(publicSkill, /多术数与多流派合参要领/);
-  assert.match(publicSkill, /数据提供方适配与调用指引/);
-  assert.match(publicSkill, /安全、伦理与专业红线/);
+  // 以当前工作流的实际步骤和按需读取契约校验入口，避免绑定已升级的旧标题。
+  assert.match(publicSkill, /统一工作顺序/);
+  assert.match(publicSkill, /建立问题卡.*锁定时空与口径.*选择路线.*建立证据账/s);
+  assert.match(publicSkill, /独立解读.*处理动态与应期.*合参与复核.*组织输出/s);
+  assert.match(publicSkill, /按需读取 `reading-workflow\.json`/);
+  assert.match(publicSkill, /规范方法身份固定为/);
+  assert.match(publicSkill, /自包含.*完整.*任务书/);
+  assert.match(publicSkill, /特殊情境/);
 
   // 主入口已解耦：不应堆砌 50+ 个完整端点表，而是委托给 provider 适配层
   assert.ok(!publicSkill.includes('POST /calendar/astronomical-time'));
@@ -202,54 +203,67 @@ test('通用算命 Skill 必须覆盖十类核心业务场景的行为与降级�
   const intake = readFileSync('public/skills/aov-mingyu-api/references/intake.md', 'utf8');
   const routing = readFileSync('public/skills/aov-mingyu-api/references/routing.md', 'utf8');
   const evidence = readFileSync('public/skills/aov-mingyu-api/references/evidence.md', 'utf8');
+  const interpretation = readFileSync(
+    'public/skills/aov-mingyu-api/references/interpretation.md',
+    'utf8',
+  );
   const timing = readFileSync('public/skills/aov-mingyu-api/references/timing.md', 'utf8');
   const synthesis = readFileSync('public/skills/aov-mingyu-api/references/synthesis.md', 'utf8');
   const safety = readFileSync('public/skills/aov-mingyu-api/references/safety.md', 'utf8');
   const providers = readFileSync('public/skills/aov-mingyu-api/references/providers.md', 'utf8');
 
-  // 1. 长期创业选择：分层合参，不做吉凶总分或投票
-  assert.match(synthesis, /多术数合参标准六步法/);
-  assert.match(synthesis, /严禁机械打分/);
-  assert.match(synthesis, /对齐认知层级与分工维度/);
+  // 1. 长期创业选择：分层合参，按主辅职责与共同事实落到核验
+  assert.match(synthesis, /多术式合参与分歧处理/);
+  assert.match(synthesis, /六步流程/);
+  assert.match(synthesis, /独立取证.*对齐尺度.*提取共同事实.*展开差异.*落到核验/s);
+  assert.match(synthesis, /主法负责回答该子问题.*辅法只填补约定维度/s);
+  assert.match(synthesis, /方法数量、符号强度或多数意见不构成独立证据/);
 
-  // 2. 缺出生时辰：八字前三柱，紫微/终身局严禁盲猜
-  assert.match(intake, /缺时辰.*处理/s);
-  assert.match(intake, /仅排年月日三柱/);
-  assert.match(intake, /紫微斗数.*必须停止排盘/s);
+  // 2. 缺出生时辰：保留可用层级，并把细层改为条件表达
+  assert.match(intake, /八字有年月日而时辰待考，可谈前三柱和阶段大势/);
+  assert.match(intake, /资料达到 B 级时先形成可用结论和条件分支，达到 A 级后再补细层/);
+  assert.match(interpretation, /缺时辰时保留前三柱结论并标出时柱影响/);
+  assert.match(interpretation, /出生时刻不足时保留行星与相位，宫位、轴点和精确时刻改为条件分支/);
 
-  // 3. 一事一问：六爻为主，无需出生八字
-  assert.match(routing, /六爻预测/);
-  assert.match(routing, /不需要.*生辰八字/s);
+  // 3. 一事一问：六爻承载事件与应期所需的主证据
+  assert.match(routing, /六爻.*单一事件/);
+  assert.match(intake, /\| 六爻 \| 起卦时间、卦象、动爻、具体一事/);
+  assert.match(routing, /六爻负责当前成败与应期/);
 
-  // 4. 方位谈判：时家奇门主客动静
-  assert.match(routing, /时家奇门/);
-  assert.match(routing, /动者为客.*静者为主/s);
+  // 4. 方位谈判：时家奇门固定主体、主客动静和方位证据
+  assert.match(routing, /时家奇门当前事件/);
+  assert.match(interpretation, /固定日干\/时干、用神宫、主客动静/);
+  assert.match(interpretation, /行动主体、方向、门星神证据和现实条件/);
 
   // 5. 复杂人事博弈：大六壬四课三传
   assert.match(routing, /大六壬/);
   assert.match(routing, /四课.*三传/s);
 
-  // 6. 动态周期与应期四阶段
-  assert.match(timing, /动态节点扫描分辨率/);
-  assert.match(timing, /应期四阶段模型/);
-  assert.match(timing, /气机萌发.*能量峰值.*动荡平复.*反复回溯/s);
+  // 6. 动态周期与应期阶段
+  assert.match(timing, /每个窗口同时写出粒度、起点、终点、所属上层和触发证据/);
+  assert.match(timing, /何时具备条件.*何时发生转折.*何时结果落地/s);
+  assert.match(timing, /多阶段事件使用事件簇.*多个阶段索引/s);
+  assert.match(timing, /一个窗口至少带一项可观察节点/);
 
-  // 7. 空间住宅风水：八宅与玄空飞星合参，建筑安全优先
-  assert.match(routing, /住宅风水合参/);
-  assert.match(routing, /八宅.*玄空/s);
+  // 7. 空间住宅风水：形势、八宅与玄空分层合参
+  assert.match(routing, /八宅、玄空、住宅环境合参/);
+  assert.match(interpretation, /形势层描述采光、通风、动线和外部环境/);
+  assert.match(interpretation, /八宅层看命卦、宅卦、门主灶与九星.*玄空层看三元九运/s);
+  assert.match(interpretation, /住宅合参把居者适配、宅运理气、形势现实和目标房间分开取证/);
 
-  // 8. 象征探索：塔罗/雷诺曼/灵签以反思为主
-  assert.match(routing, /象征探索/);
-  assert.match(routing, /三山国王灵签/);
+  // 8. 象征探索：牌阵、事件语法、签谱材料各自分层
+  assert.match(routing, /塔罗提供牌阵叙事，雷诺曼提供事件语法，灵签提供签谱与典故/);
+  assert.match(interpretation, /牌面象征与现实资料分层/);
 
-  // 9. 高风险红线：医疗、法律、高额投资与人身安全
-  assert.match(safety, /高风险领域绝对红线/);
-  assert.match(safety, /绝不替代临床诊断/);
-  assert.match(safety, /绝不替代执业律师/);
-  assert.match(safety, /绝不承诺投资回报/);
+  // 9. 高风险领域：术数叙事与医疗、法律、投资、人身安全事实分层
+  assert.match(safety, /现实事实.*术数材料.*术数判断与现实判断分成两层/s);
+  assert.match(safety, /医疗诊断、处方、急症处理和治疗效果属于临床资料/);
+  assert.match(safety, /证据、合同、诉讼策略和法律结论依据执业律师/);
+  assert.match(safety, /资金规模、产品条款、流动性、估值和监管资料属于现实判断/);
+  assert.match(safety, /人身安全先依据现实环境、可信联系人和专业支持/);
 
-  // 10. Provider 故障与降级：保留上下文，不把错误当凶兆
-  assert.match(providers, /优雅降级/);
-  assert.match(providers, /保留.*已确认资料/);
-  assert.match(providers, /严禁将错误信息包装成玄学结论/);
+  // 10. Provider 故障与降级：保留上下文，区分操作事实与术数判断
+  assert.match(providers, /取得失败时保留问题卡、已确认输入和已有盘面/);
+  assert.match(providers, /明确可用层级和补采项/);
+  assert.match(providers, /异常本身属于操作事实，与术数吉凶分开/);
 });

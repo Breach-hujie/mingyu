@@ -53,6 +53,8 @@ test('八字指定流年任务书保留已计算的十神与触发事实且各�
   assert.match(prompt, /选择日期：2026年/);
   assert.match(prompt, /上层岁运：/);
   assert.match(prompt, /所选干支：丙午/);
+  assert.doesNotMatch(focus, /结构化证据|计算链|计算链概览|关系汇总：|反证核验：|解释限制：/);
+  assert.doesNotMatch(focus, /来源：|标签：|sourceLayerKey|已计算|不得/);
 });
 
 test('八字完整任务书保留完整大运流年和逐年岁运关系', () => {

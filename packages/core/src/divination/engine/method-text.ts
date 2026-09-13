@@ -47,15 +47,15 @@ function buildMethodTaskText(method: Exclude<DivinationMethodId, 'random'>, data
     case 'ssgw':
       return '依据签诗原文和签题回答【问题】。';
     case 'zhuge':
-      return '依据三个汉字的康熙笔画、取数过程、签序与签文回答【问题】。';
+      return '依据本签签号、签诗、典故与解意回答【问题】。';
     case 'kongming':
-      return '依据五枚硬币所得阴阳卦象、卦名、等第与卦诗回答【问题】。';
+      return '依据本签卦名、等第、卦诗、典故与解卦回答【问题】。';
     case 'almanac':
       return '';
     case 'astrolabe':
       return '依据星体、宫位和相位回答【问题】。';
     case 'taiyi':
-      return '依据年家局数、太乙、文昌、始击、计神与主客算回答【问题】。';
+      return '依据本次计法与时间层级、局数、太乙、文昌、始击、计神与主客算回答【问题】。';
     case 'huangji':
       return !data || (data as HuangjiJingshiResult).forecast
         ? '依据元会运世位置、会内统卦、运卦、六十年统卦、十年卦、值年卦以及月经、旬纬、日卦和时经卦回答【问题】。'

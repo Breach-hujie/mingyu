@@ -58,16 +58,15 @@ import { formatJinkoujueRelations, formatJinkoujueMovementRules } from './jinkou
 
 function formatZhugeInfo(data: ZhugeNumberResult) {
   const interpretation = data.interpretation ?? getZhugeInterpretation(data.number);
+  const basicInterpretation = interpretation
+    ? [interpretation.quote, interpretation.imageMeaning, interpretation.interpretation].join('；')
+    : data.sign.summary;
   return [
-    '占法：诸葛神数',
-    `所写三字：${data.text}`,
-    `康熙笔画：${data.chars.map((char, index) => `${char}${data.strokes[index]}画`).join('、')}`,
-    `取数：${data.digits.join('')}，归入第${data.number}签`,
+    `签号：第${data.number}签`,
     `签诗：${data.sign.poem}`,
-    `基础解意：${interpretation?.interpretation ?? data.sign.summary}`,
-    interpretation ? `诗句取象：${interpretation.quote}；${interpretation.imageMeaning}` : '',
-    interpretation ? `补充解释：${interpretation.condition}` : '',
-    interpretation?.classicalImage ? `典故取象：${interpretation.classicalImage}` : '',
+    interpretation?.classicalImage ? `典故：${interpretation.classicalImage}` : '',
+    `基础解签：${basicInterpretation}`,
+    interpretation?.condition ? `补充解释：${interpretation.condition}` : '',
   ]
     .filter(Boolean)
     .join('\n');
@@ -75,22 +74,20 @@ function formatZhugeInfo(data: ZhugeNumberResult) {
 
 function formatKongmingInfo(data: KongmingHexagramResult) {
   const interpretation = data.interpretation ?? getKongmingInterpretation(data.symbol);
+  const classicalImage = interpretation.classicalImage;
   return [
-    '占法：孔明神卦',
-    `五枚硬币：${data.symbol}（●为正面、阳；○为反面、阴；按摆放顺序排列）`,
-    `卦序：第${data.number}卦`,
-    `卦名：${data.name}`,
-    `等第：${data.grade}`,
-    `卦诗：${data.poem}`,
-    `诗句取象：${interpretation.quote}；${interpretation.imageMeaning}`,
-    `基础解卦：${interpretation.interpretation}`,
+    `签号：第${data.number}签`,
+    `签题：${data.name}`,
+    `签诗：${data.poem}`,
+    `吉凶级别：${data.grade}`,
+    classicalImage
+      ? `典故：${classicalImage.title}“${classicalImage.quote}”；${classicalImage.meaning}`
+      : '',
+    `基础解签：${interpretation.quote}；${interpretation.imageMeaning}；${interpretation.interpretation}`,
     `补充解释：${interpretation.condition}`,
-    ...(interpretation.classicalImage
-      ? [
-          `卦名取象：${interpretation.classicalImage.title}“${interpretation.classicalImage.quote}”；${interpretation.classicalImage.meaning}`,
-        ]
-      : []),
-  ].join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 function getMeihuaMethodLabel(
@@ -1024,6 +1021,9 @@ function formatLenormandInfo(data: LenormandData) {
   const combinationLines = (data.combinations ?? [])
     .filter((item) => item.source === '固定组合')
     .map((item) => `  ${item.card1}+${item.card2}：${item.meaning}`);
+  const adjacentLines = (data.combinations ?? [])
+    .filter((item) => item.source !== '固定组合')
+    .map((item) => `  ${item.card1}+${item.card2}：${item.meaning}`);
   const evidenceAnalysis = data.evidenceAnalysis?.structuredLayoutFacts
     ? data.evidenceAnalysis
     : analyzeLenormandEvidence(data);
@@ -1037,6 +1037,7 @@ function formatLenormandInfo(data: LenormandData) {
     ...cardLines,
     ...(layoutLines.length ? ['布局关系：', ...layoutLines] : []),
     ...(combinationLines.length ? ['固定组合：', ...combinationLines] : []),
+    ...(adjacentLines.length ? ['相邻合读：', ...adjacentLines] : []),
   ]
     .filter(Boolean)
     .join('\n');
