@@ -139,6 +139,18 @@ test('玄空飞星拒绝缺年和不相对坐向，替卦必须显式满足兼�
   });
   assert.equal(centralNineBoundarySensitive.measurement?.stability, '山向边界敏感');
   assert.equal(centralNineBoundarySensitive.measurement?.isJianXiang, true);
+  assert.deepEqual(centralNineBoundarySensitive.measurement?.boundaryReasons, ['中央九度分界']);
+  assert.equal(centralNineBoundarySensitive.measurement?.candidateMountains, undefined);
+  assert.match(
+    centralNineBoundarySensitive.measurement?.warnings.join('') ?? '',
+    /跨越中央九度分界/,
+  );
+  assert.match(
+    centralNineBoundarySensitive.prompt,
+    /复测确认位于中央九度内时用下卦，核定兼向外侧三度时可选替卦/,
+  );
+  assert.match(centralNineBoundarySensitive.evidenceAnalysis.promptText, /中央九度分界/);
+  assert.match(centralNineBoundarySensitive.evidenceAnalysis.promptText, /下卦.*替卦/);
   assert.throws(
     () => generateXuanKong({ year: 2024, sitDegree: 7.5, guaType: '替卦' }),
     /边界敏感/,
@@ -153,6 +165,28 @@ test('玄空飞星拒绝缺年和不相对坐向，替卦必须显式满足兼�
       }),
     /measurementUncertaintyDegrees/,
   );
+});
+
+test('玄空正处4.5度中央九度分界时保留下卦并提示下卦/替卦复核', () => {
+  const result = generateXuanKong({
+    year: 2024,
+    sitDegree: 4.5,
+    facingDegree: 184.5,
+    measurementUncertaintyDegrees: 0,
+  });
+
+  assert.equal(result.measurement?.stability, '山向边界敏感');
+  assert.deepEqual(result.measurement?.boundaryReasons, ['中央九度分界']);
+  assert.equal(result.measurement?.nearestBoundaryDistanceDegrees, 3);
+  assert.equal(result.measurement?.nearestCentralNineBoundaryDistanceDegrees, 0);
+  assert.equal(result.measurement?.candidateMountains, undefined);
+  assert.equal(result.engine.mode, '下卦');
+  assert.match(result.measurement?.warnings.join('') ?? '', /正处中央九度分界/);
+  assert.match(result.prompt, /正处中央九度分界/);
+  assert.match(result.prompt, /复测确认位于中央九度内时用下卦，核定兼向外侧三度时可选替卦/);
+  assert.doesNotMatch(result.prompt, /候选山向/);
+  assert.match(result.evidenceAnalysis.promptText, /中央九度分界/);
+  assert.match(result.evidenceAnalysis.promptText, /下卦.*替卦/);
 });
 
 test('玄空替星诀覆盖二十四山且补齐戌山武曲六白', () => {
@@ -254,7 +288,10 @@ test('测量误差跨边界时标记山向边界敏感，仍使用下卦', () =>
   });
   assert.ok(result.measurement);
   assert.equal(result.measurement?.stability, '山向边界敏感');
+  assert.deepEqual(result.measurement?.boundaryReasons, ['二十四山分界', '中央九度分界']);
   assert.equal(result.engine.mode, '下卦');
+  assert.match(result.prompt, /二十四山分界/);
+  assert.match(result.prompt, /中央九度分界/);
 });
 
 test('玄空边界敏感时应输出候选山向', () => {
@@ -264,8 +301,10 @@ test('玄空边界敏感时应输出候选山向', () => {
     measurementUncertaintyDegrees: 1,
   });
   assert.equal(result.measurement?.stability, '山向边界敏感');
+  assert.deepEqual(result.measurement?.boundaryReasons, ['二十四山分界']);
   assert.ok((result.measurement?.candidateMountains?.length ?? 0) >= 1);
-  assert.match(result.prompt, /候选/);
+  assert.match(result.prompt, /候选山向/);
+  assert.match(result.evidenceAnalysis.promptText, /二十四山分界/);
 });
 
 test('玄空测量误差范围应枚举全部覆盖山向，不得只取左中右三个采样点', () => {

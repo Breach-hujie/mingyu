@@ -104,11 +104,20 @@ export interface XuanKongPeriod {
   label: string;
 }
 
+export type XuanKongMeasurementBoundaryReason = '二十四山分界' | '中央九度分界';
+
 export interface XuanKongMeasurement {
   facingDegree?: number;
   sitDegree?: number;
   stability: '稳定' | '山向边界敏感';
+  /** 测量误差半径；与边界原因一起说明当前山向是否可直接定盘。 */
+  uncertaintyDegrees: number;
+  /** 到二十四山边界的距离；与中央九度边界距离分开记录。 */
   nearestBoundaryDistanceDegrees?: number;
+  /** 到中央九度（下卦/兼向）分界的距离。 */
+  nearestCentralNineBoundaryDistanceDegrees?: number;
+  /** 触发山向边界敏感的实际原因；兼向本身不属于边界。 */
+  boundaryReasons?: XuanKongMeasurementBoundaryReason[];
   /** 两端度数均位于各山中央九度之外的兼向范围。 */
   isJianXiang?: boolean;
   candidateMountains?: Array<{ sitMountain: string; facingMountain: string; label: string }>;
@@ -421,20 +430,22 @@ export function resolveXuanKongOrientation(
       Math.abs(distanceFromCenter(sitPos) - 4.5),
       Math.abs(distanceFromCenter(facingPos) - 4.5),
     );
+    const mountainBoundarySensitive =
+      (uncertainty > 0 && boundaryDistance <= uncertainty) ||
+      sitPos.isBoundary ||
+      facingPos.isBoundary;
     const centralNineBoundarySensitive =
       centralNineBoundaryDistance === 0 ||
       (uncertainty > 0 && centralNineBoundaryDistance <= uncertainty);
+    const boundaryReasons: XuanKongMeasurementBoundaryReason[] = [
+      ...(mountainBoundarySensitive ? (['二十四山分界'] as const) : []),
+      ...(centralNineBoundarySensitive ? (['中央九度分界'] as const) : []),
+    ];
     const stability: XuanKongMeasurement['stability'] =
-      (uncertainty > 0 && boundaryDistance <= uncertainty) ||
-      centralNineBoundarySensitive ||
-      sitPos.isBoundary ||
-      facingPos.isBoundary
-        ? '山向边界敏感'
-        : '稳定';
+      mountainBoundarySensitive || centralNineBoundarySensitive ? '山向边界敏感' : '稳定';
     const warnings: string[] = [];
     const candidateMountains: NonNullable<XuanKongMeasurement['candidateMountains']> = [];
-    if (stability === '山向边界敏感') {
-      warnings.push('测量容差已跨越二十四山边界或中央九度分界，本次并列相邻山向结果');
+    if (mountainBoundarySensitive) {
       const coverage = Math.max(uncertainty, 0.01) + 7.5;
       for (let index = 0; index < TWENTY_FOUR_MOUNTAINS.length; index += 1) {
         const centerDegree = index * 15;
@@ -449,6 +460,18 @@ export function resolveXuanKongOrientation(
           label: `坐${sitCandidate.mountain}向${facingCandidate.mountain}`,
         });
       }
+      warnings.push(
+        candidateMountains.length > 1
+          ? `测量范围触及二十四山分界，已列出${candidateMountains.length}个候选山向，请复测确认二十四山。`
+          : '测量位置触及二十四山分界，当前山向需复测确认。',
+      );
+    }
+    if (centralNineBoundarySensitive) {
+      warnings.push(
+        centralNineBoundaryDistance === 0 && uncertainty === 0
+          ? '测量位置正处中央九度分界；复测确认位于中央九度内时用下卦，核定兼向外侧三度时可选替卦。'
+          : '测量误差范围跨越中央九度分界；复测确认位于中央九度内时用下卦，核定兼向外侧三度时可选替卦。',
+      );
     }
     const isJianXiang =
       !sitPos.isBoundary &&
@@ -467,7 +490,10 @@ export function resolveXuanKongOrientation(
         facingDegree: facingPos.degree,
         sitDegree: sitPos.degree,
         stability,
+        uncertaintyDegrees: uncertainty,
         nearestBoundaryDistanceDegrees: Number(boundaryDistance.toFixed(2)),
+        nearestCentralNineBoundaryDistanceDegrees: Number(centralNineBoundaryDistance.toFixed(2)),
+        ...(boundaryReasons.length ? { boundaryReasons } : {}),
         isJianXiang,
         ...(candidateMountains.length ? { candidateMountains } : {}),
         warnings,
@@ -646,6 +672,14 @@ function buildPrompt(result: Omit<XuanKongResult, 'evidenceAnalysis' | 'prompt'>
     `运程：${result.period.label}`,
     '星气采用旺、生、死、煞、退五气口径：当运为旺，后续两星为生，随后两星为死，再后三星为煞，前一运星为退；结合实际山水形势和星宫生克解读。',
     `本次资料层级：宅盘（运盘、山盘、向盘）${result.flowStars ? '、流年盘' : ''}${result.flowStars?.monthPlate ? '、流月盘' : ''}。各星当运、生气、退气等状态以宅盘${result.period.yun}运为参照。`,
+    result.measurement
+      ? [
+          `测量资料：坐山${result.measurement.sitDegree}°、朝向${result.measurement.facingDegree}°、误差±${result.measurement.uncertaintyDegrees}°`,
+          `距二十四山分界${result.measurement.nearestBoundaryDistanceDegrees ?? '未知'}°、距中央九度分界${result.measurement.nearestCentralNineBoundaryDistanceDegrees ?? '未知'}°`,
+          `边界原因：${result.measurement.boundaryReasons?.join('、') || '当前测量落在二十四山与中央九度稳定区间'}`,
+          ...result.measurement.warnings,
+        ].join('；')
+      : '',
     `山向：坐${result.sitMountain}向${result.facingMountain}`,
     `卦型：${result.guaType}；${result.replacementReason}`,
     result.replacement
