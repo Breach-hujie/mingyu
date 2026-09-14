@@ -188,7 +188,6 @@ test('八字岁运正文区分同干支冲、岁运并临与天克地冲，并�
     assert.doesNotMatch(pairLines, new RegExp(excluded));
     if (yearGanZhi === '癸酉') assert.match(pairLines, /干同/);
     assert.match(focus, /流日甲申↔节气流月甲寅：干同、六冲/);
-    assert.match(focus, /流日甲申↔节气流月甲寅：干同、六冲/);
     assert.doesNotMatch(focus, /sourceLayerKey|已计算|反证事实|计算步骤|不得/);
   }
 });

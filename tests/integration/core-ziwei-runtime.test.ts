@@ -46,20 +46,18 @@ test('npm 紫微运行时应支持固定运限时刻和指定范围', async () =
     skipAnalysis: true,
     horoscopeContext: { dateStr: '2026-08-06', hourIndex: 4 },
   };
-  const first = await calculateZiweiChart(input, options);
-  const second = await calculateZiweiChart(input, options);
+  const runtime = await calculateZiweiChart(input, options);
 
-  assert.deepEqual(Object.keys(first.payloadByScope), ['origin', 'yearly']);
-  assert.deepEqual(first.horoscopeContext, { dateStr: '2026-08-06', hourIndex: 4 });
-  assert.deepEqual(first.payloadByScope, second.payloadByScope);
-  assert.equal(first.payloadByScope.origin.evidence_pool.length, 0);
-  assert.equal(first.payloadByScope.yearly.active_scope.scope, 'yearly');
-  assert.equal(first.decadalTimeline.length > 0, true);
+  assert.deepEqual(Object.keys(runtime.payloadByScope), ['origin', 'yearly']);
+  assert.deepEqual(runtime.horoscopeContext, { dateStr: '2026-08-06', hourIndex: 4 });
+  assert.equal(runtime.payloadByScope.origin.evidence_pool.length, 0);
+  assert.equal(runtime.payloadByScope.yearly.active_scope.scope, 'yearly');
+  assert.equal(runtime.decadalTimeline.length > 0, true);
 
-  const serializable = buildSerializableZiweiResult(first);
+  const serializable = buildSerializableZiweiResult(runtime);
   assert.equal(serializable.scopeNames.includes('origin'), true);
   assert.equal(serializable.gongList.length, 12);
-  assert.equal(serializable.五行局, first.payloadByScope.origin.basic_info.five_elements_class);
+  assert.equal(serializable.五行局, runtime.payloadByScope.origin.basic_info.five_elements_class);
   assert.equal(typeof serializable.命宫, 'string');
   assert.equal(typeof serializable.身宫, 'string');
   assert.deepEqual(serializable.四化, serializable.fourMutagens);

@@ -2,10 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { handlePublicApiRequest, isPublicApiRequestPath } from '../../src/lib/public-api/handler';
 import { onRequest as handleWellKnownApiRequest } from '../../functions/.well-known/[[path]]';
-import {
-  buildZiweiChartInput,
-  calculateFullZiweiChart,
-} from '../../src/lib/full-chart-engine/ziwei';
+import { buildZiweiChartInput, calculateZiweiChart } from '../../src/lib/full-chart-engine/ziwei';
 import {
   buildBaziZiweiPromptForResults,
   buildBaziPromptForResult,
@@ -122,10 +119,16 @@ test('小六壬公开接口使用所选底本起课并生成同口径提示词',
   }
 });
 
-function createZiweiRuntimeFixture(input: Parameters<typeof calculateFullZiweiChart>[0]) {
-  let runtimePromise: ReturnType<typeof calculateFullZiweiChart> | undefined;
+function createZiweiRuntimeFixture(
+  input: Parameters<typeof calculateZiweiChart>[0],
+  scopes: ('origin' | 'yearly')[] = ['origin'],
+) {
+  let runtimePromise: ReturnType<typeof calculateZiweiChart> | undefined;
   return () => {
-    runtimePromise ??= calculateFullZiweiChart(input);
+    runtimePromise ??= calculateZiweiChart(input, {
+      scopes,
+      horoscopeContext: { dateStr: '2026-08-06', hourIndex: 4 },
+    });
     return runtimePromise;
   };
 }
@@ -142,6 +145,7 @@ const getMaleZiweiRuntime = createZiweiRuntimeFixture(
     isLeapMonth: false,
     useTrueSolarTime: false,
   }),
+  ['origin', 'yearly'],
 );
 
 const getFemaleZiweiRuntime = createZiweiRuntimeFixture(
@@ -2374,32 +2378,6 @@ test('紫微提示词按三合、飞星、四化流派输出对应任务与依�
   });
 });
 
-test('紫微中州派安星口径进入底层排盘与可复制提示词', async () => {
-  const runtime = await calculateFullZiweiChart(
-    buildZiweiChartInput({
-      name: '测试',
-      gender: 'female',
-      dateType: 'solar',
-      year: '1992',
-      month: '8',
-      day: '21',
-      timeIndex: 4,
-      isLeapMonth: false,
-      useTrueSolarTime: false,
-      algorithm: 'zhongzhou',
-    }),
-  );
-
-  assert.equal(runtime.payloadByScope.origin.calculation_config.algorithm, 'zhongzhou');
-  const prompt = buildZiweiPromptForRuntime({
-    result: runtime,
-    question: '整体命局如何判断？',
-  });
-  assert.match(prompt, /安星口径：中州派安星法/);
-  assert.doesNotMatch(prompt, /iztro|项目|API|MCP|工程/);
-  assertPromptIsPortableTaskText(prompt);
-});
-
 test('公开 API 紫微未指定方向时应默认走综合框架而不是自由问答', async () => {
   const { response, body } = await callApi('ziwei/prompt', {
     method: 'POST',
@@ -2447,6 +2425,8 @@ test('公开 API 紫微支持中州派底层安星口径', async () => {
   assert.equal(body.ok, true);
   assert.equal(body.data.result.payloadByScope.origin.calculation_config.algorithm, 'zhongzhou');
   assert.match(body.data.prompt, /安星口径：中州派安星法/);
+  assert.doesNotMatch(body.data.prompt, /iztro|项目|API|MCP|工程/);
+  assertPromptIsPortableTaskText(body.data.prompt);
 });
 
 test('公开 API 紫微排盘应支持真太阳时精确时分和经度', async () => {
@@ -2706,15 +2686,13 @@ test('公开 API 紫微排盘应提供 agent 易解析的四化和宫位列表',
     opposite_palace_index: number;
     surrounded_palace_indexes: number[];
   }>;
-  const fullRuntime = await calculateFullZiweiChart(buildZiweiChartInput(ziweiInput), true);
-  const fullPalaces = fullRuntime.payloadByScope.origin.palaces;
-
-  assert.equal(publicPalaces.length, fullPalaces.length);
+  assert.equal(publicPalaces.length, 12);
   publicPalaces.forEach((palace) => {
-    const fullPalace = fullPalaces.find((item) => item.index === palace.index);
-    assert.ok(fullPalace, `${palace.name} 应存在于完整紫微 payload`);
-    assert.equal(palace.opposite_palace_index, fullPalace.opposite_palace_index);
-    assert.deepEqual(palace.surrounded_palace_indexes, fullPalace.surrounded_palace_indexes);
+    assert.equal(palace.opposite_palace_index, (palace.index + 6) % 12);
+    assert.deepEqual(
+      [...palace.surrounded_palace_indexes].sort((a, b) => a - b),
+      [0, 4, 6, 8].map((offset) => (palace.index + offset) % 12).sort((a, b) => a - b),
+    );
     assert.equal(new Set(palace.surrounded_palace_indexes).size, 4);
     assert.ok(palace.surrounded_palace_indexes.includes(palace.index));
     assert.ok(palace.surrounded_palace_indexes.includes(palace.opposite_palace_index));

@@ -30,12 +30,18 @@ test('合法术式与别名获得对应专业指南，正文提到其他术数�
     assert.ok(guide.includes(`${label}：`), method);
     assert.doesNotMatch(guide, /八字：|紫微斗数：|奇门遁甲：/, method);
   }
+
+  const bazi = getReadingGuide('八字排盘：甲子日');
+  assert.match(bazi, /透干、藏干、通根/);
+  assert.doesNotMatch(bazi, /紫微斗数：|六爻：/);
 });
 
 test('显式双术合参保留两套专业推导，未知方法不会按正文猜成其他术式', () => {
-  const combined = getReadingGuide('请围绕职业问题解读。', undefined, 'bazi-ziwei');
-  assert.match(combined, /八字：/);
-  assert.match(combined, /紫微斗数：/);
+  const combined = getReadingGuide('八字紫微合参');
+  assert.match(combined, /八字：.*\n紫微斗数：/);
+  const routedCombined = getReadingGuide('请围绕职业问题解读。', undefined, 'bazi-ziwei');
+  assert.match(routedCombined, /八字：/);
+  assert.match(routedCombined, /紫微斗数：/);
   const unknown = getReadingGuide('八字四柱与紫微命身宫', undefined, 'unknown-method');
   assert.doesNotMatch(unknown, /八字：|紫微斗数：/);
 });

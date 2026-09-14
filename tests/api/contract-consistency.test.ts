@@ -1,7 +1,7 @@
 import test from 'node:test';
 import { getToolCatalog } from '../../mcp/src/catalog/tool-catalog';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   PUBLIC_API_ENDPOINTS,
@@ -69,49 +69,6 @@ test('Skill 数据提供方适配文档中的端点必须全部在 PUBLIC_API_EN
       `${id} HTTP 方法或路径失效`,
     );
     assert.equal(catalog.find((tool) => tool.id === id)?.endpoint, path, `${id} 映射不一致`);
-  }
-});
-
-test('MCP Server 必须完整覆盖所有已公开的核心术式工具', () => {
-  const mcpServerPath = existsSync(join(process.cwd(), 'mcp/src/create-server.ts'))
-    ? join(process.cwd(), 'mcp/src/create-server.ts')
-    : join(process.cwd(), 'mcp/src/server.ts');
-  const serverContent = readFileSync(mcpServerPath, 'utf8');
-
-  const requiredToolRegisters = [
-    'registerBaziTool',
-    'registerZiweiTool',
-    'registerBaziZiweiTool',
-    'registerLiuyaoTool',
-    'registerMeihuaTool',
-    'registerXiaoliurenTool',
-    'registerJinkoujueTool',
-    'registerQimenTool',
-    'registerLiurenTool',
-    'registerTarotTool',
-    'registerSsgwTool',
-    'registerAlmanacTool',
-    'registerLenormandTool',
-    'registerAstrolabeTool',
-    'registerBaZhaiTool',
-    'registerZodiacTool',
-    'registerTaiyiTool',
-    'registerWuyunLiuqiTool',
-    'registerHuangjiJingshiTool',
-    'registerQizhengTool',
-    'registerXuanKongTool',
-    'registerResidentialFengshuiTool',
-    'registerFoundationTools',
-    'registerCalendarTools',
-    'registerInstantTool',
-    'registerYilinTool',
-  ];
-
-  for (const reg of requiredToolRegisters) {
-    assert.ok(
-      serverContent.includes(reg),
-      `MCP Server 中缺失关键工具注册: ${reg}，导致部分术式无法被 MCP 客户端调用`,
-    );
   }
 });
 

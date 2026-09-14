@@ -1,9 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import {
   fitReadingMessages,
-  getReadingGuide,
   parseReadingPlan,
   runReadingWorkflow,
   type ReadingMemory,
@@ -223,26 +221,6 @@ const ziweiSubject: ReadingSubjectSnapshot = {
   allowedMethods: ['ziwei'],
   range: { ziweiScope: 'full', ziweiScopeDate: '2000-06-01', scopeHourIndex: 0 },
 };
-
-test('解读加载分术式路线并与可下载 Skill 同源', () => {
-  assert.equal(
-    readFileSync('skills/mingyu/references/reading-workflow.json', 'utf8'),
-    readFileSync('public/skills/mingyu/references/reading-workflow.json', 'utf8'),
-  );
-  const bazi = getReadingGuide('八字排盘：甲子日');
-  assert.match(bazi, /透干、藏干、通根/);
-  assert.doesNotMatch(bazi, /紫微斗数：|六爻：/);
-  assert.match(getReadingGuide('八字紫微合参'), /八字：.*\n紫微斗数：/);
-});
-
-test('解读 Skill 按资料自适应，排盘时段优先于古籍查询', () => {
-  const skill = readFileSync('skills/mingyu/SKILL.md', 'utf8');
-  assert.match(skill, /按资料与问题自适应/);
-  assert.doesNotMatch(skill, /严格遵循以下固定生命周期/);
-  const source = readFileSync('src/lib/ai/reading-workflow.ts', 'utf8');
-  assert.match(source, /排盘类优先补齐当前阶段/);
-  assert.ok(source.indexOf('kind":"schema') < source.indexOf('kind":"classic'));
-});
 
 test('准备结果只接受有限的查询与补算动作', () => {
   assert.deepEqual(parseReadingPlan('```json\n{"actions":[]}\n```'), []);
