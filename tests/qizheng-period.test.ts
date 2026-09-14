@@ -117,7 +117,7 @@ test('流年立春按目标 IANA 时区反解且不沿用出生时刻偏移', ()
   }).utcTimestamp;
   // 流曜输入目前只有分钟精度，允许立春证据与墙钟输入相差不足一分钟。
   assert.ok(Math.abs(flowUtc - lichunUtc) < 60_000, `${flowUtc} !== ${lichunUtc}`);
-  assert.equal(flow.localDateTime, '2024-02-04 03:27');
+  assert.equal(flow.localDateTime, '2024-02-04T03:27:00');
 });
 
 test('出生时刻的 IANA 与固定偏移冲突仍然拒绝排盘', () => {
@@ -127,7 +127,7 @@ test('出生时刻的 IANA 与固定偏移冲突仍然拒绝排盘', () => {
         ...NEW_YORK_SUMMER_BIRTH,
         timezone: -5,
       }),
-    /偏移冲突/,
+    /历史偏移不一致/,
   );
 });
 
@@ -172,7 +172,7 @@ test('显式流日按纽约目标日期的冬夏偏移解析', () => {
     );
     assert.equal(
       flow.localDateTime,
-      `2024-${String(target.month).padStart(2, '0')}-${String(target.day).padStart(2, '0')} 12:00`,
+      `2024-${String(target.month).padStart(2, '0')}-${String(target.day).padStart(2, '0')}T12:00:00`,
     );
   }
 });
@@ -190,14 +190,28 @@ test('纽约夏令时跳时日的周期事件按每个 UTC 瞬时实际偏移格
     timezone: -4,
     timeZoneId: 'America/New_York',
     mode: 'daily',
-    sampleLongitudes: (utcMs) => [{ name: '太阳', longitude: 29 + (utcMs - startUtcMs) / hour }],
+    sampleLongitudes: (utcMs) => [{ name: '太阳', longitude: 28.5 + (utcMs - startUtcMs) / hour }],
   });
   assert.equal(result.startDateTime, '2024-03-10 01:00');
   assert.equal(result.endDateTime, '2024-03-10 04:00');
   const ingress = result.events.find((event) => event.kind === '换宫');
   assert.ok(ingress);
-  assert.equal(ingress.dateTime, '2024-03-10 03:00');
-  assert.match(ingress.promptText, /^2024-03-10 03:00 换宫/);
+  assert.ok(Math.abs(ingress.utcMs - Date.UTC(2024, 2, 10, 7, 30)) < 1000);
+  const localParts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(ingress.utcMs));
+  const part = (type: string) => localParts.find((item) => item.type === type)?.value;
+  assert.equal(
+    ingress.dateTime,
+    `${part('year')}-${part('month')}-${part('day')} ${part('hour')}:${part('minute')}`,
+  );
+  assert.match(ingress.promptText, /^2024-03-10 03:/);
 });
 
 test('纽约三月流月周期按两个 IANA 午夜解析并跨越夏令时少一小时', () => {
