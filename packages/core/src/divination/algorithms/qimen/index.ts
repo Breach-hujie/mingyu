@@ -421,7 +421,9 @@ export function generateQimen(
     .map((item) => item.branch);
   const hasVoid = yingQiVoidBranches.length > 0;
   const hasHorse = isHorseActivated(horsePalace?.palace, [zhiFuLandingPalace, zhiShiLandingPalace]);
-  const yingQi = estimateYingQi(jiuGongGe, zhiFuLandingPalace, {
+  // 未按具体事项选定用神时，第二参数保持省略，让应期结果明确标为值符通用参考，
+  // 同时避免把值符宫作为“用神”再重复计入一次。
+  const yingQi = estimateYingQi(jiuGongGe, undefined, {
     isFuyin,
     isFanyin,
     hasHorse,

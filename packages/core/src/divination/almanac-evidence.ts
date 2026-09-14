@@ -97,9 +97,10 @@ export interface AlmanacHourEvidence {
   constraints: string[];
   participantSupport: string[];
   participantRelationFacts: AlmanacParticipantRelationFact[];
+  topicMatchFacts?: AlmanacTopicMatchFact[];
   promptText: string;
   sources: string[];
-  limitation: '逐时时课只保留时柱、十二神与参与人刑冲破害，不证明该时辰必然成功、吉利或适合所有人';
+  limitation: '逐时时课保留时柱、十二神、事项宜忌与参与人刑冲破害，表示本次事项的候选条件';
 }
 
 export interface AlmanacCalendarFact {
@@ -245,7 +246,7 @@ const TRADITIONAL_FACT_LIMITATION =
 const CALENDAR_FACT_LIMITATION =
   '公历、农历、干支、建除、十二神与冲煞是当前候选日的历法和规则字段，只用于确定比较条件，不单独证明现实吉凶或事项结果' as const;
 const HOUR_FACT_LIMITATION =
-  '逐时时课只保留时柱、十二神与参与人刑冲破害，不证明该时辰必然成功、吉利或适合所有人' as const;
+  '逐时时课保留时柱、十二神、事项宜忌与参与人刑冲破害，表示本次事项的候选条件' as const;
 const RAW_TABOO_FACT_LIMITATION =
   '原始宜忌只保留历书列项及其是否命中当前事项；未列不等于适宜，列出也不等于现实事项必然成功或失败' as const;
 const DECISION_FACT_LIMITATION =
@@ -447,7 +448,7 @@ function getParticipantSupportTexts(
 function isStrongTopicConstraint(fact: AlmanacTopicMatchFact): boolean {
   return (
     fact.status === '限制' &&
-    /:topic:(?:day-avoids|rule-day-officer|rule-gods-constraint|day-officer-constraint)$/.test(
+    /:topic:(?:day-avoids|day-general-constraint|rule-day-officer|rule-gods-constraint|day-officer-constraint)$/.test(
       fact.key,
     )
   );
@@ -466,8 +467,15 @@ function classifyAlmanacHourCandidate(hour: AlmanacHourCandidate): {
     hour.participantRelationFacts,
     hour.participantNotes,
   );
-  const strongConstraintTexts = unique([...directParticipantConflicts]);
-  const constraintTexts = unique([...hour.cautions, ...participantConstraints]);
+  const topicConstraints = (hour.topicMatchFacts ?? [])
+    .filter((fact) => fact.status === '限制')
+    .map((fact) => fact.promptText);
+  const strongConstraintTexts = unique([...directParticipantConflicts, ...topicConstraints]);
+  const constraintTexts = unique([
+    ...hour.cautions,
+    ...participantConstraints,
+    ...topicConstraints,
+  ]);
   return {
     status: strongConstraintTexts.length
       ? '慎用候选'
@@ -702,8 +710,13 @@ function buildHourEvidence(date: string, hour: AlmanacHourCandidate): AlmanacHou
     constraints,
     participantSupport,
     participantRelationFacts,
+    ...(hour.topicMatchFacts ? { topicMatchFacts: hour.topicMatchFacts } : {}),
     promptText,
-    sources: ['逐时时柱与十二神计算', '参与人刑冲破害核验'],
+    sources: [
+      '逐时时柱与十二神计算',
+      ...(hour.topicMatchFacts ? ['逐时事项宜忌核验'] : []),
+      '参与人刑冲破害核验',
+    ],
     limitation: HOUR_FACT_LIMITATION,
   };
 }

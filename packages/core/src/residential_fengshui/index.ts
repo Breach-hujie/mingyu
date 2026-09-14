@@ -8,13 +8,13 @@
 import {
   analyzeBaZhai,
   analyzeBaZhaiByDoorDegree,
-  getBaZhaiSitFacingFromDoorDegree,
-  type BaZhaiDoorDegreeInput,
+  analyzeBaZhaiBySitDegree,
   type BaZhaiInput,
   type BaZhaiResult,
 } from '../ba_zhai';
 import {
   generateXuanKong,
+  resolveXuanKongOrientation,
   type XuanKongGuaType,
   type XuanKongInput,
   type XuanKongResult,
@@ -120,35 +120,42 @@ function hasOrientationInput(input: ResidentialFengshuiInput) {
   );
 }
 
-function buildOrientationText(params: {
-  bazhai: BaZhaiResult | null;
-  xuankong: XuanKongResult | null;
-  input: ResidentialFengshuiInput;
-}) {
-  if (params.xuankong) {
-    return `坐${params.xuankong.sitMountain}向${params.xuankong.facingMountain}`;
+type ResidentialOrientation = ReturnType<typeof resolveXuanKongOrientation>;
+
+function resolveResidentialOrientation(
+  input: ResidentialFengshuiInput,
+): ResidentialOrientation | undefined {
+  if (!hasOrientationInput(input)) return undefined;
+  const toTrueNorth = (degree: number) =>
+    resolveDoorNorth({ ...input, doorToInteriorDegree: degree });
+  let sitDegree = input.sitDegree === undefined ? undefined : toTrueNorth(input.sitDegree);
+  const facingDegree =
+    input.facingDegree === undefined ? undefined : toTrueNorth(input.facingDegree);
+  if (input.doorToInteriorDegree !== undefined) {
+    const doorSitDegree = resolveDoorNorth(input);
+    if (
+      sitDegree !== undefined &&
+      Math.min(Math.abs(sitDegree - doorSitDegree), 360 - Math.abs(sitDegree - doorSitDegree)) >
+        1e-10
+    ) {
+      throw new Error('门向换算的坐山度数与提供的坐山度数不一致。');
+    }
+    sitDegree = doorSitDegree;
   }
-  const sit =
-    params.input.sitMountain ||
-    (params.bazhai as { directionMeasurement?: { sitMountain?: string } } | null)
-      ?.directionMeasurement?.sitMountain;
-  const facing =
-    params.input.facingMountain ||
-    (params.bazhai as { directionMeasurement?: { facingMountain?: string } } | null)
-      ?.directionMeasurement?.facingMountain;
-  if (sit && facing) return `坐${sit}向${facing}`;
-  if (sit) return `坐${sit}`;
-  if (params.input.doorToInteriorDegree != null) {
-    return `门向度数 ${params.input.doorToInteriorDegree}°`;
-  }
-  if (params.input.facingDegree != null) return `朝向度数 ${params.input.facingDegree}°`;
-  if (params.input.sitDegree != null) return `坐山度数 ${params.input.sitDegree}°`;
-  return '未提供山向';
+  return resolveXuanKongOrientation({
+    sitDegree,
+    facingDegree,
+    sitMountain: input.sitMountain,
+    facingMountain: input.facingMountain,
+    measurementUncertaintyDegrees: input.measurementUncertaintyDegrees,
+  });
 }
 
-function buildBazhai(input: ResidentialFengshuiInput): BaZhaiResult | null {
+function buildBazhai(
+  input: ResidentialFengshuiInput,
+  orientation?: ResidentialOrientation,
+): BaZhaiResult | null {
   if (!hasPersonInput(input)) return null;
-
   const base: BaZhaiInput = {
     ...(input.birthYear != null ? { birthYear: input.birthYear } : {}),
     ...(input.birthMonth != null ? { birthMonth: input.birthMonth } : {}),
@@ -156,91 +163,52 @@ function buildBazhai(input: ResidentialFengshuiInput): BaZhaiResult | null {
     ...(input.gender ? { gender: input.gender } : {}),
     ...(input.mingGua ? { mingGua: input.mingGua } : {}),
   };
-
-  if (input.doorToInteriorDegree != null) {
-    const doorInput: BaZhaiDoorDegreeInput = {
+  const measurement = {
+    northReference: input.northReference,
+    magneticDeclinationDegrees: input.magneticDeclinationDegrees,
+    measurementUncertaintyDegrees: input.measurementUncertaintyDegrees,
+  };
+  if (input.doorToInteriorDegree !== undefined) {
+    return analyzeBaZhaiByDoorDegree({
       ...base,
+      ...measurement,
       doorToInteriorDegree: input.doorToInteriorDegree,
-      ...(input.northReference ? { northReference: input.northReference } : {}),
-      ...(input.magneticDeclinationDegrees != null
-        ? { magneticDeclinationDegrees: input.magneticDeclinationDegrees }
-        : {}),
-      ...(input.measurementUncertaintyDegrees != null
-        ? { measurementUncertaintyDegrees: input.measurementUncertaintyDegrees }
-        : {}),
-    };
-    return analyzeBaZhaiByDoorDegree(doorInput);
+    });
   }
-
-  const sitMountain =
-    input.sitMountain ||
-    (input.facingMountain ? undefined : (input as { sitMountain?: string }).sitMountain);
-
-  // 若只给了朝向山名，则由玄空侧推坐山后，再回填八宅。
-  if (sitMountain) {
-    return analyzeBaZhai({ ...base, sitMountain });
+  if (input.sitDegree !== undefined || input.facingDegree !== undefined) {
+    return analyzeBaZhaiBySitDegree({
+      ...base,
+      ...measurement,
+      sitDegree: input.sitDegree ?? normalizeDegree(input.facingDegree! + 180),
+    });
   }
-
-  // 无明确坐山时，仍可先算命卦盘。
-  return analyzeBaZhai(base);
+  return analyzeBaZhai({
+    ...base,
+    ...(orientation ? { sitMountain: orientation.sitMountain } : {}),
+  });
 }
 
 function buildXuanKong(
   input: ResidentialFengshuiInput,
-  bazhai: BaZhaiResult | null,
+  orientation?: ResidentialOrientation,
 ): XuanKongResult | null {
-  if (!hasOrientationInput(input) || input.year == null) return null;
-
-  const measurement = (
-    bazhai as {
-      directionMeasurement?: {
-        sitMountain?: string;
-        facingMountain?: string;
-        sitDegree?: number;
-        facingDegree?: number;
-      };
-    } | null
-  )?.directionMeasurement;
-
+  if (!orientation || input.year == null) return null;
   const xuanInput: XuanKongInput = {
     year: input.year,
-    ...(input.guaType ? { guaType: input.guaType } : {}),
-    ...(input.measurementUncertaintyDegrees != null
-      ? { measurementUncertaintyDegrees: input.measurementUncertaintyDegrees }
+    sitMountain: orientation.sitMountain,
+    facingMountain: orientation.facingMountain,
+    guaType: input.guaType,
+    measurementUncertaintyDegrees: input.measurementUncertaintyDegrees,
+    flowYear: input.flowYear,
+    flowMonth: input.flowMonth,
+    flowDay: input.flowDay,
+    ...(orientation.measurement
+      ? {
+          sitDegree: orientation.measurement.sitDegree,
+          facingDegree: orientation.measurement.facingDegree,
+        }
       : {}),
-    ...(input.flowYear != null ? { flowYear: input.flowYear } : {}),
-    ...(input.flowMonth != null ? { flowMonth: input.flowMonth } : {}),
-    ...(input.flowDay != null ? { flowDay: input.flowDay } : {}),
   };
-
-  if (input.sitDegree != null || input.facingDegree != null) {
-    if (input.sitDegree != null) xuanInput.sitDegree = input.sitDegree;
-    if (input.facingDegree != null) xuanInput.facingDegree = input.facingDegree;
-    if (input.sitMountain != null) xuanInput.sitMountain = input.sitMountain;
-    if (input.facingMountain != null) xuanInput.facingMountain = input.facingMountain;
-  } else if (input.doorToInteriorDegree != null && measurement) {
-    // 八宅门向量测：measuredDegree 是入户方向；玄空优先用其换算出的坐向。
-    if (measurement.sitDegree !== undefined) xuanInput.sitDegree = measurement.sitDegree;
-    if (measurement.facingDegree !== undefined) xuanInput.facingDegree = measurement.facingDegree;
-    if (measurement.sitMountain) xuanInput.sitMountain = measurement.sitMountain;
-    if (measurement.facingMountain) xuanInput.facingMountain = measurement.facingMountain;
-  } else if (input.doorToInteriorDegree != null) {
-    // 无居住人时仍可用门向起玄空宅运盘。
-    const trueNorthDegree = resolveDoorNorth(input);
-    const position = getBaZhaiSitFacingFromDoorDegree(trueNorthDegree);
-    xuanInput.sitDegree = position.sit.degree;
-    xuanInput.facingDegree = position.facing.degree;
-    xuanInput.measurementUncertaintyDegrees = input.measurementUncertaintyDegrees ?? 0;
-  } else if (input.sitMountain || input.facingMountain) {
-    if (input.sitMountain) xuanInput.sitMountain = input.sitMountain;
-    if (input.facingMountain) xuanInput.facingMountain = input.facingMountain;
-  } else if (measurement?.sitMountain) {
-    xuanInput.sitMountain = measurement.sitMountain;
-    if (measurement.facingMountain) xuanInput.facingMountain = measurement.facingMountain;
-  } else {
-    return null;
-  }
-
   return generateXuanKong(xuanInput);
 }
 
@@ -441,21 +409,9 @@ export function generateResidentialFengshui(
     throw new Error('仅按山向排玄空宅运盘时，必须提供住宅建造年或起运年。');
   }
 
-  // 先尽量用门向度数算出八宅坐向，再喂给玄空，保证两边山向一致。
-  let bazhai = buildBazhai(input);
-  const xuankong = buildXuanKong(input, bazhai);
-
-  // 若八宅只有命卦、但玄空已推出坐山，则回填八宅宅卦。
-  if (bazhai && !bazhai.houseGua && xuankong?.sitMountain && hasPersonInput(input)) {
-    bazhai = analyzeBaZhai({
-      ...(input.birthYear != null ? { birthYear: input.birthYear } : {}),
-      ...(input.birthMonth != null ? { birthMonth: input.birthMonth } : {}),
-      ...(input.birthDay != null ? { birthDay: input.birthDay } : {}),
-      ...(input.gender ? { gender: input.gender } : {}),
-      ...(input.mingGua ? { mingGua: input.mingGua } : {}),
-      sitMountain: xuankong.sitMountain,
-    });
-  }
+  const orientation = resolveResidentialOrientation(input);
+  const bazhai = buildBazhai(input, orientation);
+  const xuankong = buildXuanKong(input, orientation);
 
   const xuankongStatus: ResidentialFengshuiResult['inputSummary']['xuankongStatus'] = xuankong
     ? '已排盘'
@@ -465,7 +421,9 @@ export function generateResidentialFengshui(
   const agreements = buildAgreements(bazhai, xuankong, xuankongStatus);
   const advice = buildAdvice(bazhai, xuankong, agreements, xuankongStatus);
   const houseYear = xuankong ? xuankong.period.year : (input.year ?? null);
-  const orientationText = buildOrientationText({ bazhai, xuankong, input });
+  const orientationText = orientation
+    ? `坐${orientation.sitMountain}向${orientation.facingMountain}`
+    : '未提供山向';
   const evidencePromptText = buildEvidencePrompt({ bazhai, xuankong, agreements, advice });
   const prompt = buildPrompt({
     orientationText,

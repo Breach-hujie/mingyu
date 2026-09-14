@@ -20,9 +20,7 @@ export const MingluInteractionsSection: React.FC<Props> = ({ items }) => {
       </div>
 
       {items.length === 0 ? (
-        <div className="minglu-empty-card">
-          原局干支相对纯粹安和，无明显剧烈冲刑破害或特殊合局。
-        </div>
+        <div className="minglu-empty-card">本局未检出所列柱间关系。</div>
       ) : (
         <div className="minglu-card-grid minglu-card-grid-2">
           {items.map((item) => (
@@ -41,19 +39,24 @@ export const MingluInteractionsSection: React.FC<Props> = ({ items }) => {
                 <span
                   className={`minglu-pill is-${item.nature === '吉' ? 'green' : item.nature === '凶' ? 'red' : 'gray'}`}
                 >
-                  {item.nature}
+                  {item.conditionStatus ?? item.nature}
                 </span>
               </div>
 
               <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">
                 涉及柱位：{item.involvedPillars.join(' 与 ')} · 干支：
                 {item.involvedStemsBranches.join('、')}
-                {item.transformElement && ` · 化气：${item.transformElement}`}
+                {item.transformElement && ` · 对应五行：${item.transformElement}`}
               </div>
 
               <p className="text-sm text-slate-700 dark:text-slate-300 mb-2 leading-relaxed">
                 {item.description}
               </p>
+              {item.conditionEvidence?.map((evidence) => (
+                <p key={evidence} className="text-xs text-slate-500 mb-1">
+                  {evidence}
+                </p>
+              ))}
 
               <div className="text-xs text-amber-800 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 p-2 rounded">
                 作用影响：{item.influence}

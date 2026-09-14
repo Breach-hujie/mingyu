@@ -1,12 +1,13 @@
 /**
  * @file 应期判断（《奇门遁甲大全》应期章、《奇门旨归》）
- * @description 综合多种盘内条件判断应期节奏与触发条件：
- *   1. 用神落宫 → 按阴阳遁内外宫取远近基线
- *   2. 值符落宫数 → 辅助基线
- *   3. 值使落宫数 → 辅助基线
- *   4. 庚格定应期：阳日看庚下（地盘庚），阴日看庚上（天盘庚），地支逢冲为应
- *   5. 马星加快、用神落空则待填实/冲实、伏吟延迟、反吟加快
- *   6. 格局只作快慢辅助，不机械换算固定天数
+ * @description 综合对象宫位与盘内条件判断应期节奏与触发条件：
+ *   1. 已选事项用神 → 按阴阳遁内外宫取远近基线
+ *   2. 未选事项用神 → 仅以值符落宫作通用参考
+ *   3. 事项用神与值符分宫时，值符落宫 → 辅助基线
+ *   4. 值使落宫数 → 辅助基线
+ *   5. 庚格定应期：阳日看庚下（地盘庚），阴日看庚上（天盘庚），地支逢冲为应
+ *   6. 马星加快、基准宫位落空则待填实/冲实、伏吟延迟、反吟加快
+ *   7. 格局只作快慢辅助，不机械换算固定天数
  */
 
 import { palaceBranches } from './_constants';
@@ -90,7 +91,7 @@ export interface YingQiEstimate {
  * 估算应期
  *
  * @param jiuGongGe     - 九宫格数据（含天盘星干、地盘干）
- * @param useShenPalace - 用神落宫（若无则回退至值符落宫）
+ * @param useShenPalace - 已按事项选定的用神落宫；省略时仅回退到值符通用参考
  * @param options       - 可选参数
  * @returns 应期估算结果
  *
@@ -123,7 +124,7 @@ export function estimateYingQi(
     isFanyin?: boolean;
     /** 是否有马星冲动 */
     hasHorse?: boolean;
-    /** 用神落宫是否逢空亡 */
+    /** 基准宫位是否逢空亡；有事项用神时指用神，否则指值符通用参考 */
     hasVoid?: boolean;
     /** 值符落宫 */
     zhiFuLandingPalace?: number;
@@ -134,8 +135,13 @@ export function estimateYingQi(
     /** 旧字段兼容：历史上误传时干支，新调用请使用 dayGanZhi */
     hourGanZhi?: string;
     /** 经典格局列表 */
-    classicPatterns?: Array<{ name: string; tone: 'good' | 'bad' | 'neutral' }>;
-    /** 命中用神落宫的空亡地支列表（用于细化说明填实时间） */
+    classicPatterns?: Array<{
+      name: string;
+      tone: 'good' | 'bad' | 'neutral';
+      /** 未填宫位表示全局格局；填宫位时仅作用于该宫。 */
+      palace?: number;
+    }>;
+    /** 命中基准宫位的空亡地支列表（用于细化说明填实时间） */
     voidBranches?: string[];
     /** 是否阳遁；用于按冬至/夏至后内外宫判断应期远近 */
     isYangDun?: boolean;
@@ -144,15 +150,17 @@ export function estimateYingQi(
   const sources: string[] = [];
 
   // ==========================================================================
-  // 1. 用神落宫 → 远近基线
+  // 1. 基准宫位（事项用神或值符通用参考）→ 远近基线
   // ==========================================================================
   // 阴阳遁内外宫随冬至/夏至后切换；未传阴阳遁时保留旧固定宫号兼容。
 
+  const hasUseShen = useShenPalace !== undefined;
   const baseGong = useShenPalace ?? options?.zhiFuLandingPalace;
+  const baseLabel = hasUseShen ? '用神' : '值符通用参考';
   if (baseGong === undefined) {
-    throw new Error('奇门应期必须提供用神落宫；未选定具体用神时应明确传入值符落宫。');
+    throw new Error('奇门应期必须提供用神落宫或值符落宫。');
   }
-  assertPalaceNumber(baseGong, '用神落宫');
+  assertPalaceNumber(baseGong, hasUseShen ? '用神落宫' : '值符落宫');
   if (options?.zhiFuLandingPalace !== undefined) {
     assertPalaceNumber(options.zhiFuLandingPalace, '值符落宫');
   }
@@ -169,41 +177,46 @@ export function estimateYingQi(
   if (baseDistance === 'inner') {
     fastSignals += 1;
     sources.push(
-      `用神落${baseGong}宫（${getPalaceDistanceLabel(baseDistance, options?.isYangDun)}速应取象），盘内远近取象偏近`,
+      `${baseLabel}落${baseGong}宫（${getPalaceDistanceLabel(baseDistance, options?.isYangDun)}速应取象），盘内远近取象偏近`,
     );
   } else if (baseDistance === 'middle') {
     sources.push(
-      `用神落${baseGong}宫（${getPalaceDistanceLabel(baseDistance, options?.isYangDun)}），盘内远近取象居中`,
+      `${baseLabel}落${baseGong}宫（${getPalaceDistanceLabel(baseDistance, options?.isYangDun)}），盘内远近取象居中`,
     );
   } else {
     slowSignals += 1;
     sources.push(
-      `用神落${baseGong}宫（${getPalaceDistanceLabel(baseDistance, options?.isYangDun)}迟应取象），盘内远近取象偏远`,
+      `${baseLabel}落${baseGong}宫（${getPalaceDistanceLabel(baseDistance, options?.isYangDun)}迟应取象），盘内远近取象偏远`,
     );
   }
 
   // ==========================================================================
   // 2. 值符落宫 → 辅助调整
   // ==========================================================================
-  // 值符落内宫 → 加快，落外宫 → 减缓
+  // 只有事项用神已明确且与值符分宫时，值符才作为独立辅助条件；
+  // 未选事项用神时值符已经是基准宫位，同宫时也不能重复计入。
 
-  if (options?.zhiFuLandingPalace) {
+  if (options?.zhiFuLandingPalace !== undefined && hasUseShen) {
     const fuGong = options.zhiFuLandingPalace;
-    const fuDistance = getPalaceDistance(fuGong, options.isYangDun);
-    if (fuDistance === 'inner') {
-      fastSignals += 1;
-      sources.push(
-        `值符落${fuGong}宫（${getPalaceDistanceLabel(fuDistance, options.isYangDun)}），应期偏快`,
-      );
-    } else if (fuDistance === 'outer') {
-      slowSignals += 1;
-      sources.push(
-        `值符落${fuGong}宫（${getPalaceDistanceLabel(fuDistance, options.isYangDun)}），应期偏缓`,
-      );
+    if (fuGong === baseGong) {
+      sources.push(`值符与用神同落${fuGong}宫，内外宫基线只计一次`);
     } else {
-      sources.push(
-        `值符落${fuGong}宫（${getPalaceDistanceLabel(fuDistance, options.isYangDun)}），应期中平`,
-      );
+      const fuDistance = getPalaceDistance(fuGong, options.isYangDun);
+      if (fuDistance === 'inner') {
+        fastSignals += 1;
+        sources.push(
+          `值符落${fuGong}宫（${getPalaceDistanceLabel(fuDistance, options.isYangDun)}），应期偏快`,
+        );
+      } else if (fuDistance === 'outer') {
+        slowSignals += 1;
+        sources.push(
+          `值符落${fuGong}宫（${getPalaceDistanceLabel(fuDistance, options.isYangDun)}），应期偏缓`,
+        );
+      } else {
+        sources.push(
+          `值符落${fuGong}宫（${getPalaceDistanceLabel(fuDistance, options.isYangDun)}），应期中平`,
+        );
+      }
     }
   }
 
@@ -341,27 +354,32 @@ export function estimateYingQi(
   // 格局只按传统类别作为支持或限制信号，不读取内部排序分，也不换算应期程度。
 
   if (options?.classicPatterns && options.classicPatterns.length > 0) {
-    const goodPatterns = options.classicPatterns.filter((pattern) => pattern.tone === 'good');
-    const badPatterns = options.classicPatterns.filter((pattern) => pattern.tone === 'bad');
-    const goodCount = goodPatterns.length;
-    const badCount = badPatterns.length;
-
-    if (goodCount > 0 && badCount === 0) {
-      fastSignals += 1;
-      sources.push(`支持格局较集中（${goodCount}项），条件具备时较易推进`);
-    } else if (badCount > 0 && goodCount === 0) {
-      slowSignals += 1;
-      sources.push(`限制格局较集中（${badCount}项），需先处理阻滞条件`);
-    } else if (goodCount > 0 && badCount > 0) {
-      sources.push(
-        `支持与限制并见（支持${goodCount}项、限制${badCount}项），快慢取决于哪类条件先落实`,
+    if (!hasUseShen) {
+      sources.push('未选定事项用神，经典格局保留为全盘资料，不进入值符通用参考的应期节奏');
+    } else {
+      const relevantPatterns = options.classicPatterns.filter(
+        (pattern) => pattern.palace === undefined || pattern.palace === baseGong,
       );
-    }
-    if (goodPatterns.length > 0) {
-      sources.push(`支持格局：${goodPatterns.map((pattern) => pattern.name).join('、')}`);
-    }
-    if (badPatterns.length > 0) {
-      sources.push(`限制格局：${badPatterns.map((pattern) => pattern.name).join('、')}`);
+      const goodPatterns = relevantPatterns.filter((pattern) => pattern.tone === 'good');
+      const badPatterns = relevantPatterns.filter((pattern) => pattern.tone === 'bad');
+
+      if (goodPatterns.length > 0 && badPatterns.length === 0) {
+        fastSignals += 1;
+        sources.push(`用神落${baseGong}宫见支持格局，条件具备时较易推进`);
+      } else if (badPatterns.length > 0 && goodPatterns.length === 0) {
+        slowSignals += 1;
+        sources.push(`用神落${baseGong}宫见限制格局，需先处理阻滞条件`);
+      } else if (goodPatterns.length > 0 && badPatterns.length > 0) {
+        sources.push(`用神落${baseGong}宫支持与限制并见，快慢取决于哪类条件先落实`);
+      } else {
+        sources.push(`用神落${baseGong}宫未命中所给格局，其他宫位格局不纳入本应期基线`);
+      }
+      if (goodPatterns.length > 0) {
+        sources.push(`支持格局：${goodPatterns.map((pattern) => pattern.name).join('、')}`);
+      }
+      if (badPatterns.length > 0) {
+        sources.push(`限制格局：${badPatterns.map((pattern) => pattern.name).join('、')}`);
+      }
     }
   }
 
@@ -381,11 +399,13 @@ export function estimateYingQi(
   );
   const triggerConditions = matchedTriggerConditions.length
     ? matchedTriggerConditions
-    : ['结合问题期限，观察用神宫所代表的人事是否出现可核验的实际进展'];
+    : [
+        `结合问题期限，观察${hasUseShen ? '用神宫' : '值符通用参考宫'}所代表的人事是否出现可核验的实际进展`,
+      ];
   const limitations = [
     '快、中、慢只表示盘内相对节奏，不对应固定日数、月数或公历日期',
     '庚格、空亡、马星等只给候选触发条件，必须结合问题期限和现实事件核验',
-    '未按具体问题选定用神时，本结果只能作为值符落宫的通用参考',
+    ...(hasUseShen ? [] : ['未按具体问题选定用神时，本结果只能作为值符落宫的通用参考']),
   ];
   const parts: string[] = [`盘内应期节奏为${rhythm}，不机械换算固定天数。`];
 
@@ -402,10 +422,14 @@ export function estimateYingQi(
     parts.push('反吟局主反复，虽快但易生变数，多做预案。');
   }
   if (baseDistance === 'inner' && !options?.hasVoid && !options?.isFuyin) {
-    parts.push('内宫用神，事在近期，果断推进即可。');
+    parts.push(
+      hasUseShen ? '内宫用神，事在近期，果断推进即可。' : '值符通用参考落内宫，盘内节奏偏近。',
+    );
   }
   if (baseDistance === 'outer' && !options?.hasHorse && !options?.isFanyin) {
-    parts.push('外宫用神，事在远日，宜耐心布局。');
+    parts.push(
+      hasUseShen ? '外宫用神，事在远日，宜耐心布局。' : '值符通用参考落外宫，盘内节奏偏远。',
+    );
   }
 
   const description = parts.join('');

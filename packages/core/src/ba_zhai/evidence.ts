@@ -68,7 +68,7 @@ export interface BaZhaiMeasurementFact {
   key: 'measurement:bazhai:door';
   status: '未提供' | BaZhaiMeasurementStability;
   referenceStatus: '未提供' | '已声明' | '未声明';
-  method?: '站在大门处面向屋内测量';
+  method?: '站在大门处面向屋内测量' | '按住宅坐山度数换算';
   input?: {
     measuredDegree: number;
     northReference: 'unspecified' | 'magnetic' | 'true';
@@ -352,8 +352,8 @@ function buildMeasurementFact(measurement?: BaZhaiDoorMeasurement): BaZhaiMeasur
       candidateFactKeys: [],
       calculationStepKeys: [],
       warnings: [],
-      promptText: '本次未提供可分析的入户角度测量资料',
-      sources: ['输入资料未提供入户度数、北向基准与测量误差'],
+      promptText: '本次未提供可分析的坐向角度测量资料',
+      sources: ['输入资料未提供坐向度数、北向基准与测量误差'],
       limitation: MEASUREMENT_FACT_LIMITATION,
     };
   }
@@ -371,7 +371,7 @@ function buildMeasurementFact(measurement?: BaZhaiDoorMeasurement): BaZhaiMeasur
       measurementFactKey: 'measurement:bazhai:door',
       calculationStepKeys: ['bazhai:calculation:house-gua'],
       promptText: `${item.label}：坐${item.sitMountain}山、向${item.facingMountain}向，归${item.houseGua}宅${item.houseGroup}，命宅${item.match}`,
-      sources: ['真北入户角度、测量误差与二十四山覆盖范围', '坐山宅卦与命宅分组比较'],
+      sources: ['真北坐山角度、测量误差与二十四山覆盖范围', '坐山宅卦与命宅分组比较'],
       limitation: MEASUREMENT_CANDIDATE_LIMITATION,
     }),
   );
@@ -399,9 +399,11 @@ function buildMeasurementFact(measurement?: BaZhaiDoorMeasurement): BaZhaiMeasur
     candidateFactKeys: candidates.map((item) => item.key),
     calculationStepKeys: ['bazhai:calculation:house-gua'],
     warnings: measurement.warnings,
-    promptText: `${measurement.method}：实测${measurement.measuredDegree}°，真北口径${measurement.trueNorthDegree}°，误差±${measurement.measurementUncertaintyDegrees}°，中心结果${measurement.label}，稳定性${measurement.stability}，候选${candidates.map((item) => item.label).join('、') || '无'}`,
+    promptText: `${measurement.method}：输入${measurement.measuredDegree}°，真北口径${measurement.trueNorthDegree}°，误差±${measurement.measurementUncertaintyDegrees}°，中心结果${measurement.label}，稳定性${measurement.stability}，候选${candidates.map((item) => item.label).join('、') || '无'}`,
     sources: [
-      '现场入户指南针读数与指定测量站位',
+      measurement.method === '站在大门处面向屋内测量'
+        ? '现场入户指南针读数与指定测量站位'
+        : '住宅坐山度数与北向基准',
       measurement.northReference === 'magnetic'
         ? '当地磁偏角换算真北'
         : measurement.northReference === 'true'
@@ -510,7 +512,7 @@ function buildCounterEvidenceFacts(
         : measurementFact.referenceStatus === '已声明'
           ? '测量资料已声明磁北或真北基准，并按相应口径处理'
           : '未声明设备采用磁北还是真北，坐向仍有北向基准缺口',
-      sources: ['入户测量北向基准与磁偏角资料核验'],
+      sources: ['坐向测量北向基准与磁偏角资料核验'],
       limitation: COUNTER_FACT_LIMITATION,
     },
   ];
@@ -705,7 +707,7 @@ export function analyzeBaZhaiEvidence(
   const measurementFact = buildMeasurementFact(measurement);
   const measurementFacts = measurement
     ? [
-        `从大门面向屋内实测${measurement.measuredDegree}°，换算真北口径为${measurement.trueNorthDegree}°`,
+        `${measurement.method === '站在大门处面向屋内测量' ? '从大门面向屋内实测' : '住宅坐山输入'}${measurement.measuredDegree}°，换算真北口径为${measurement.trueNorthDegree}°`,
         `传统坐向为${measurement.label}，坐${measurement.sitMountain}山、向${measurement.facingMountain}向`,
         `测量误差±${measurement.measurementUncertaintyDegrees}°，距最近二十四山边界${measurement.nearestBoundaryDistanceDegrees.toFixed(2)}°`,
         `稳定性为${measurement.stability}，候选坐向${measurement.candidateDirections.map((item) => item.label).join('、')}`,
@@ -768,7 +770,7 @@ export function analyzeBaZhaiEvidence(
       ? [
           {
             level: measurement.stability === '稳定' ? ('主证' as const) : ('反证' as const),
-            title: `入户坐向测量${measurement.stability}`,
+            title: `${measurement.method === '站在大门处面向屋内测量' ? '入户' : '住宅'}坐向测量${measurement.stability}`,
             detail: `${measurementFacts.join('；')}；北向基准${measurement.northReference === 'true' ? '真北' : measurement.northReference === 'magnetic' ? `磁北，磁偏角${measurement.magneticDeclinationDegrees ?? 0}°` : '未声明'}；候选明细${measurementCandidateFacts.map((item) => `${item.promptText}；边界：${item.limitation}`).join('；')}；测量边界：${measurementFact.limitation}`,
             source: measurementFact.sources.join('、'),
             tags: [
@@ -821,7 +823,7 @@ export function analyzeBaZhaiEvidence(
     '【八宅命宅方位与测量结构化证据】',
     ...formatPromptEvidenceBundle(evidence),
     `计算链：${calculationChain.join(' → ')}。`,
-    `测量事实：${measurementFacts.join('；') || '本次未提供可分析的入户角度测量资料'}。`,
+    `测量事实：${measurementFacts.join('；') || '本次未提供可分析的坐向角度测量资料'}。`,
     `命宅同为吉方：${
       alignedDirections
         .filter((item) => item.relation === '同为吉方')

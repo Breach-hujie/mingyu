@@ -383,7 +383,10 @@ test('黄历择日：每个候选日应给出完整时辰，不生成首选时�
     assert.equal(new Set(day.hours?.map((hour) => hour.range)).size, 13);
     assert.ok(!('bestHours' in day), `${day.date} 不应生成首选时辰`);
     for (const hour of day.hours ?? []) {
-      assert.ok(!('recommends' in hour) && !('avoids' in hour));
+      assert.ok(Array.isArray(hour.recommends) && Array.isArray(hour.avoids));
+      for (const fact of hour.topicMatchFacts ?? []) {
+        assert.ok(fact.matchedItems.every((item) => fact.inputItems.includes(item)));
+      }
     }
   }
 });

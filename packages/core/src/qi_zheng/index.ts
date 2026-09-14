@@ -20,9 +20,11 @@
  */
 import * as AstronomyEngine from 'astronomy-engine';
 import type { Body } from 'astronomy-engine';
-import { SevenStar, TwentyEightStar } from 'tyme4ts';
-import { daysInGregorianMonth } from '../calendar/date-validation';
+import { SevenStar, SolarTerm, TwentyEightStar } from 'tyme4ts';
+import { getCivilDateTimeAtFixedOffset, resolveCivilTime } from '../calendar/civil-time';
+import { createUtcTimestamp, daysInGregorianMonth } from '../calendar/date-validation';
 import { getShichenFromClock } from '../calendar/dateUtils';
+import { getHistoricalTimezoneOffsetAt } from '../calendar/historical-timezone';
 import { calculateTrueSolarTime } from '../calendar/true-solar-time';
 import {
   buildAstronomicalTimeEvidence,
@@ -1716,14 +1718,44 @@ function buildQizhengEvidence(
   };
 }
 
-function utcMsToTimezoneParts(utcMs: number, timezone: number) {
-  const shifted = new Date(utcMs + timezone * 3_600_000);
+type QizhengCivilMinute = {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+};
+
+/** 将流曜输入按目标时刻的时区偏移反解为当地墙钟字段。 */
+function utcMsToTimezoneParts(
+  utcMs: number,
+  input: Pick<QizhengInput, 'timezone' | 'timeZoneId'>,
+): QizhengCivilMinute {
+  const instant = new Date(utcMs);
+  const timezone = input.timeZoneId
+    ? getHistoricalTimezoneOffsetAt(instant, input.timeZoneId)
+    : (input.timezone ?? 8);
+  const shifted = getCivilDateTimeAtFixedOffset(instant, timezone);
   return {
-    year: shifted.getUTCFullYear(),
-    month: shifted.getUTCMonth() + 1,
-    day: shifted.getUTCDate(),
-    hour: shifted.getUTCHours(),
-    minute: shifted.getUTCMinutes(),
+    year: shifted.year,
+    month: shifted.month,
+    day: shifted.day,
+    hour: shifted.hour,
+    minute: shifted.minute,
+  };
+}
+
+/**
+ * 流曜是目标日期的当地时刻。
+ * 出生输入同时给出 timezone 与 timeZoneId 时，numeric timezone 只用于出生时刻消歧；
+ * 派生流曜日期必须按目标日期的 IANA 实际偏移，不能沿用出生日偏移。
+ */
+function buildQizhengFlowInput(natal: QizhengInput, parts: QizhengCivilMinute): QizhengInput {
+  const { timezone, ...withoutBirthTimezone } = natal;
+  return {
+    ...withoutBirthTimezone,
+    ...(natal.timeZoneId || timezone === undefined ? {} : { timezone }),
+    ...parts,
   };
 }
 
@@ -1734,19 +1766,17 @@ function resolveQizhengFlowCivilInput(natal: QizhengInput):
     }
   | undefined {
   if (natal.flowYear === undefined) return undefined;
-  const timezone = natal.timezone ?? 8;
   if (natal.flowMonth !== undefined && natal.flowDay !== undefined) {
     const hour = natal.flowHour ?? 12;
     const minute = natal.flowMinute ?? 0;
     return {
-      flowInput: {
-        ...natal,
+      flowInput: buildQizhengFlowInput(natal, {
         year: natal.flowYear,
         month: natal.flowMonth,
         day: natal.flowDay,
         hour,
         minute,
-      },
+      }),
       timestampNote:
         natal.flowHour === undefined
           ? `流曜周期按${natal.flowYear}年${natal.flowMonth}月${natal.flowDay}日扫描；落宫取当日 12:00`
@@ -1755,28 +1785,20 @@ function resolveQizhengFlowCivilInput(natal: QizhengInput):
   }
   if (natal.flowMonth !== undefined) {
     return {
-      flowInput: {
-        ...natal,
+      flowInput: buildQizhengFlowInput(natal, {
         year: natal.flowYear,
         month: natal.flowMonth,
         day: 15,
         hour: 12,
         minute: 0,
-      },
+      }),
       timestampNote: `未指定流日时，流曜周期按${natal.flowYear}年${natal.flowMonth}月整月扫描；落宫取月中 15日 12:00，不代替整月`,
     };
   }
-  const lichun = calculateSolarTermEvidence(natal.flowYear, 3);
-  const parts = utcMsToTimezoneParts(lichun.utcTimestamp, timezone);
+  const lichunUtc = getQizhengLichunUtc(natal.flowYear);
+  const parts = utcMsToTimezoneParts(lichunUtc, natal);
   return {
-    flowInput: {
-      ...natal,
-      year: parts.year,
-      month: parts.month,
-      day: parts.day,
-      hour: parts.hour,
-      minute: parts.minute,
-    },
+    flowInput: buildQizhengFlowInput(natal, parts),
     timestampNote: `未指定流月时，流曜周期自立春扫描至次年立春；落宫取立春交节，不代替全年`,
   };
 }
@@ -1881,14 +1903,45 @@ function collectQizhengStars(input: QizhengInput): {
   return { stars, mansionBoundaries, ziqi, calculationContext };
 }
 
-function localPartsToUtcMs(
-  parts: { year: number; month: number; day: number; hour: number; minute: number },
-  timezone: number,
-) {
+/** 将目标日期的当地墙钟时刻按该日期的时区规则解析为 UTC。 */
+function resolveQizhengLocalTimestamp(parts: QizhengCivilMinute, natal: QizhengInput): number {
+  // 派生日期不复用出生时刻的 numeric timezone；IANA 模式按目标日期实际偏移解析。
+  const timezoneInput = natal.timeZoneId
+    ? { timeZoneId: natal.timeZoneId }
+    : { timezone: natal.timezone ?? 8 };
+  return resolveCivilTime({ ...parts, second: 0, ...timezoneInput }).utcTimestamp;
+}
+
+/**
+ * 取得七政流年窗口的立春 UTC 时刻。
+ *
+ * 七政公开输入允许流年到 2200 年；年度窗口还需要 2201 年立春作为右端点，
+ * 但共享节气证据为了保持自身的 1900-2200 契约不会接受 2201。这里仅为这个
+ * 已通过输入校验的年度右端点复用同一 tyme4ts 历表初值，2201 不因此成为可排流年。
+ */
+function getQizhengLichunUtc(year: number): number {
+  if (year <= 2200) return calculateSolarTermEvidence(year, 3).utcTimestamp;
+  if (year !== 2201) throw new Error('七政年度窗口只支持 2200 年以内的流年。');
+  const time = SolarTerm.fromIndex(year, 3).getJulianDay().getSolarTime();
+  // tyme4ts 节气民用时刻按中国标准时表达，转 UTC 只用于周期边界。
   return (
-    Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute) -
-    timezone * 3_600_000
+    createUtcTimestamp(
+      time.getYear(),
+      time.getMonth() - 1,
+      time.getDay(),
+      time.getHour(),
+      time.getMinute(),
+      time.getSecond(),
+    ) -
+    8 * 3600000
   );
+}
+
+function nextQizhengCivilDate(year: number, month: number, day: number) {
+  const maxDay = daysInGregorianMonth(year, month);
+  if (day < maxDay) return { year, month, day: day + 1 };
+  if (month < 12) return { year, month: month + 1, day: 1 };
+  return { year: year + 1, month: 1, day: 1 };
 }
 
 function resolveQizhengPeriodWindow(natal: QizhengInput): {
@@ -1896,38 +1949,37 @@ function resolveQizhengPeriodWindow(natal: QizhengInput): {
   endUtcMs: number;
   mode: QizhengPeriodMode;
 } {
-  const timezone = natal.timezone ?? 8;
   if (natal.flowMonth !== undefined && natal.flowDay !== undefined) {
-    const start = localPartsToUtcMs(
-      {
-        year: natal.flowYear as number,
-        month: natal.flowMonth,
-        day: natal.flowDay,
-        hour: 0,
-        minute: 0,
-      },
-      timezone,
-    );
-    return { startUtcMs: start, endUtcMs: start + 24 * 60 * 60 * 1000, mode: 'daily' };
+    const startParts: QizhengCivilMinute = {
+      year: natal.flowYear as number,
+      month: natal.flowMonth,
+      day: natal.flowDay,
+      hour: 0,
+      minute: 0,
+    };
+    const endDate = nextQizhengCivilDate(startParts.year, startParts.month, startParts.day);
+    const endParts: QizhengCivilMinute = { ...endDate, hour: 0, minute: 0 };
+    return {
+      startUtcMs: resolveQizhengLocalTimestamp(startParts, natal),
+      endUtcMs: resolveQizhengLocalTimestamp(endParts, natal),
+      mode: 'daily',
+    };
   }
   if (natal.flowMonth !== undefined) {
     const year = natal.flowYear as number;
     const month = natal.flowMonth;
-    const start = localPartsToUtcMs({ year, month, day: 1, hour: 0, minute: 0 }, timezone);
-    const end = localPartsToUtcMs(
-      {
-        year: month === 12 ? year + 1 : year,
-        month: month === 12 ? 1 : month + 1,
-        day: 1,
-        hour: 0,
-        minute: 0,
-      },
-      timezone,
-    );
-    return { startUtcMs: start, endUtcMs: end, mode: 'monthly' };
+    const startParts: QizhengCivilMinute = { year, month, day: 1, hour: 0, minute: 0 };
+    const endDate =
+      month === 12 ? { year: year + 1, month: 1, day: 1 } : { year, month: month + 1, day: 1 };
+    const endParts: QizhengCivilMinute = { ...endDate, hour: 0, minute: 0 };
+    return {
+      startUtcMs: resolveQizhengLocalTimestamp(startParts, natal),
+      endUtcMs: resolveQizhengLocalTimestamp(endParts, natal),
+      mode: 'monthly',
+    };
   }
-  const start = calculateSolarTermEvidence(natal.flowYear as number, 3).utcTimestamp;
-  const end = calculateSolarTermEvidence((natal.flowYear as number) + 1, 3).utcTimestamp;
+  const start = getQizhengLichunUtc(natal.flowYear as number);
+  const end = getQizhengLichunUtc((natal.flowYear as number) + 1);
   return { startUtcMs: start, endUtcMs: end, mode: 'yearly' };
 }
 
@@ -1997,6 +2049,7 @@ function overlayQizhengFlowingStars(
     startUtcMs: window.startUtcMs,
     endUtcMs: window.endUtcMs,
     timezone: natal.timezone ?? 8,
+    timeZoneId: natal.timeZoneId,
     mode: window.mode,
     sampleLongitudes: sampleQizhengLongitudes,
   });

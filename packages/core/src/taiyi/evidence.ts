@@ -1,6 +1,7 @@
 import { formatPromptEvidenceBundle } from '../prompt-evidence/format';
 import type { PromptEvidenceBundle, PromptEvidenceItem } from '../prompt-evidence/types';
 import type { TaiyiModelInfo, TaiyiScope } from '../types/divination';
+import type { TaiyiRuleConditions } from './conditions';
 
 export interface TaiyiEvidenceInput {
   scope: TaiyiScope;
@@ -36,6 +37,7 @@ export interface TaiyiEvidenceInput {
   setGeneral: number;
   setAssistant: number;
   sixteenGods: { branch: string; god: string }[];
+  conditions: TaiyiRuleConditions;
   model: TaiyiModelInfo;
 }
 
@@ -48,6 +50,7 @@ export interface TaiyiEvidenceAnalysis {
   forceFacts: TaiyiForceFact[];
   sixteenGodFacts: TaiyiSixteenGodFact[];
   conditionFacts: TaiyiConditionFact[];
+  conditions: TaiyiRuleConditions;
   primaryFacts: string[];
   supportingFacts: string[];
   counterEvidence: string[];
@@ -104,22 +107,23 @@ export interface TaiyiSixteenGodFact {
 export interface TaiyiConditionFact {
   key: string;
   status: '已命中' | '未命中';
-  kind: '掩' | '囚' | '主将参中宫' | '客将参中宫';
+  kind: '掩' | '囚' | '主将参中宫' | '客将参中宫' | '三门' | '五将' | '阴阳和';
   matched: boolean;
   calculationStepKeys: string[];
   calculationText: string;
   promptText: string;
   sources: string[];
-  limitation: '掩、囚与将参中宫只证明盘面满足对应位置条件；传统动静或攻守解释须结合所问事项与现实资料，不代表必然结果';
+  limitation: '掩、囚、三门、五将、阴阳和与将参中宫只证明盘面满足对应位置条件；传统动静或攻守解释须结合所问事项与现实资料，不代表必然结果';
 }
 
 export interface TaiyiCalculationStep {
   key: string;
-  name: '360周期余数' | '72数段' | '60数段' | '局数';
+  name: '360周期余数' | '72数段' | '60数段' | '局数' | '三门' | '五将' | '阴阳和';
   status: '已复算';
   input: number;
   operation: string;
-  result: number;
+  /** 算式步骤保留数值结果；条件步骤使用明确的传统状态，避免把发不发/和不和编码成 1/0。 */
+  result: number | string;
   dependsOnStepKeys: string[];
   basis: string;
   promptText: string;
@@ -129,13 +133,13 @@ export interface TaiyiCalculationStep {
 
 export interface TaiyiCounterEvidenceFact {
   key: string;
-  type: '掩' | '囚' | '主将参中宫' | '客将参中宫';
+  type: '掩' | '囚' | '主将参中宫' | '客将参中宫' | '三门' | '五将' | '阴阳和';
   status: '已命中' | '未命中';
   ownerConditionKey: string;
   ownerFactKeys: string[];
   promptText: string;
   sources: string[];
-  limitation: '反证事实只记录掩、囚与主客将参中宫条件是否命中；未命中不代表现实有利，命中也不证明攻守、胜负或固定应期';
+  limitation: '反证事实只记录掩、囚、三门、五将、阴阳和与主客将参中宫条件是否命中；未命中不代表现实有利，命中也不证明攻守、胜负或固定应期';
 }
 
 export interface TaiyiCounterSummaryFact {
@@ -169,7 +173,7 @@ export interface TaiyiSummaryFact {
   limitationFactCount: number;
   promptText: string;
   sources: string[];
-  limitation: '太乙证据汇总只统计积数计算、核心定位、主客定算、十六神、条件、反证与限制覆盖；不得按数量生成吉凶总分、成功率、人物强弱、攻守胜负或固定应期';
+  limitation: '太乙证据汇总只统计积数计算、核心定位、主客定算、十六神、三门五将阴阳和条件、反证与限制覆盖；不得按数量生成吉凶总分、成功率、人物强弱、攻守胜负或固定应期';
 }
 
 const POSITION_FACT_LIMITATION =
@@ -182,17 +186,17 @@ const SIXTEEN_GOD_FACT_LIMITATION =
   '十六神固定定位只作为太乙基础盘辅助索引，未结合具体类神和完整古法细目时不得单独生成现实结论' as const;
 
 const CONDITION_FACT_LIMITATION =
-  '掩、囚与将参中宫只证明盘面满足对应位置条件；传统动静或攻守解释须结合所问事项与现实资料，不代表必然结果' as const;
+  '掩、囚、三门、五将、阴阳和与将参中宫只证明盘面满足对应位置条件；传统动静或攻守解释须结合所问事项与现实资料，不代表必然结果' as const;
 const CALCULATION_STEP_LIMITATION =
   '积数算式只证明本计积数如何折算360周期余数、72数段、60数段与七十二局；数段序号不等同于已经统一版本口径的元纪，也不证明传统解释有效性、现实胜负、吉凶比例、人物强弱或固定应期' as const;
 const COUNTER_FACT_LIMITATION =
-  '反证事实只记录掩、囚与主客将参中宫条件是否命中；未命中不代表现实有利，命中也不证明攻守、胜负或固定应期' as const;
+  '反证事实只记录掩、囚、三门、五将、阴阳和与主客将参中宫条件是否命中；未命中不代表现实有利，命中也不证明攻守、胜负或固定应期' as const;
 const COUNTER_SUMMARY_LIMITATION =
   '反证汇总只说明传统条件覆盖情况；不得据命中数量生成吉凶总分、成功率、人物强弱或固定应期' as const;
 const LIMITATION_FACT_LIMITATION =
   '限制事实用于约束太乙四计、七十二局、主客定算和十六神可以支持的解释范围，不得被反向当作现实结果或概率证据' as const;
 const SUMMARY_FACT_LIMITATION =
-  '太乙证据汇总只统计积数计算、核心定位、主客定算、十六神、条件、反证与限制覆盖；不得按数量生成吉凶总分、成功率、人物强弱、攻守胜负或固定应期' as const;
+  '太乙证据汇总只统计积数计算、核心定位、主客定算、十六神、三门五将阴阳和条件、反证与限制覆盖；不得按数量生成吉凶总分、成功率、人物强弱、攻守胜负或固定应期' as const;
 
 const SCOPE_LABELS: Record<TaiyiScope, string> = {
   year: '年计',
@@ -309,16 +313,70 @@ function buildConditionFacts(data: TaiyiEvidenceInput): TaiyiConditionFact[] {
         '客大将或客参将落中宫，传统上提示客方行动条件受限，须结合现实条件复核，不直接断宜守或成败',
       unmatchedText: '客大将与客参将均未落中宫',
     },
+    {
+      kind: '三门',
+      matched: data.conditions.threeGates.complete,
+      calculationText: `积数${data.accumulatedValue}按二百四十周期、三十换门得直使${data.conditions.threeGates.directGate}；按${data.conditions.threeGates.gateScope}取门，始击（客目）门位单列`,
+      matchedText: `太乙与文昌（主目）均未落开、休、生三吉门，三门具；直使${data.conditions.threeGates.directGate}，始击门位保留但不并入本栏`,
+      unmatchedText: `三门状态为${data.conditions.threeGates.status}；命中${data.conditions.threeGates.blockedRoles.join('、') || '三吉门条件'}，不得把门条件省略为胜负结论`,
+    },
+    {
+      kind: '五将',
+      matched: data.conditions.fiveGenerals.launched,
+      calculationText: `按${data.conditions.fiveGenerals.launchRule}；二目五行${data.conditions.fiveGenerals.hostGuestElementRelation.hostPosition}/${data.conditions.fiveGenerals.hostGuestElementRelation.guestPosition}另列为${data.conditions.fiveGenerals.hostGuestElementRelation.relation}`,
+      matchedText:
+        '始击无掩击、文昌无囚迫，主客四将未见同宫关，按卷四三项条件记为五将发；格、对及二目五行关系仍须分别阅读，不直接断战果',
+      unmatchedText: `五将不发：${data.conditions.fiveGenerals.relations.map((item) => `${item.kind}${item.left}第${item.leftPalace}宫与${item.right}第${item.rightPalace}宫${item.relation}`).join('、') || '至少一项发将条件未满足'}`,
+    },
+    {
+      kind: '阴阳和',
+      matched: data.conditions.yinYangHarmony.matched,
+      calculationText: data.conditions.yinYangHarmony.pairFacts
+        .map(
+          (item) =>
+            `${item.role}${item.polarity}${item.count}${item.countPolarity}${item.matched ? '和' : '不和'}`,
+        )
+        .join('；'),
+      matchedText: '太乙及上下二目与对应主客算逐项符合阳偶或阴奇，阴阳和；仍须结合长短与具体占题',
+      unmatchedText: `阴阳不和：${data.conditions.yinYangHarmony.pairFacts
+        .filter((item) => !item.matched)
+        .map((item) => `${item.role}为${item.polarity}${item.count}（${item.countPolarity}）`)
+        .join('、')}`,
+    },
   ];
   return facts.map((item) => ({
     key: `条件:${item.kind}`,
     status: item.matched ? ('已命中' as const) : ('未命中' as const),
     kind: item.kind,
     matched: item.matched,
-    calculationStepKeys: ['taiyi:calculation:bureau'],
+    calculationStepKeys: [
+      'taiyi:calculation:bureau',
+      item.kind === '三门'
+        ? 'taiyi:calculation:three-gates'
+        : item.kind === '五将'
+          ? 'taiyi:calculation:five-generals'
+          : item.kind === '阴阳和'
+            ? 'taiyi:calculation:yin-yang-harmony'
+            : 'taiyi:calculation:bureau',
+    ].filter((key, index, keys) => keys.indexOf(key) === index),
     calculationText: item.calculationText,
     promptText: item.matched ? item.matchedText : item.unmatchedText,
-    sources: ['盘面宫位逐项比较', '太乙掩囚与将参中宫传统条件'],
+    sources:
+      item.kind === '三门'
+        ? [
+            '《太乙金镜式经》卷四·推三门具不具',
+            '《太乙金镜式经》卷二·天目、主目与客目定义',
+            '三门直使与太乙、文昌主目逐宫比较',
+          ]
+        : item.kind === '五将'
+          ? [
+              '《太乙金镜式经》卷四·推五将发不发',
+              '《太乙金镜式经》卷三·推关法、推格法、推对法',
+              '《太乙金镜式经》卷四·推主客相关法（二目五行制化单列）',
+            ]
+          : item.kind === '阴阳和'
+            ? ['《太乙金镜式经》·推阴阳和不和', '太乙八宫与十六神正宫、间辰阴阳配算规则']
+            : ['盘面宫位逐项比较', '太乙掩囚与将参中宫传统条件'],
     limitation: CONDITION_FACT_LIMITATION,
   }));
 }
@@ -350,8 +408,8 @@ function buildCounterSummaryFact(
     factKeys: unmatched.map((item) => item.key),
     promptText: unmatched.length
       ? `未见${unmatched.map((item) => item.type).join('、')}；未命中不代表现实有利或不利，只保留条件事实`
-      : '掩、囚与主客将参中宫条件均有命中记录；不得据命中数量生成综合判断',
-    sources: ['掩、囚与主客将参中宫条件逐项汇总'],
+      : '掩、囚、三门、五将、阴阳和与主客将参中宫条件均有命中记录；不得据命中数量生成综合判断',
+    sources: ['掩、囚、三门、五将、阴阳和与主客将参中宫条件逐项汇总'],
     limitation: COUNTER_SUMMARY_LIMITATION,
   };
 }
@@ -427,11 +485,11 @@ function buildSummaryFact(args: {
   limitationFacts: TaiyiLimitationFact[];
 }): TaiyiSummaryFact {
   const status =
-    args.calculationSteps.length === 4 &&
+    args.calculationSteps.length === 7 &&
     args.positionFacts.length === 4 &&
     args.forceFacts.length === 3 &&
     args.sixteenGodFacts.length === 16 &&
-    args.conditionFacts.length === 4
+    args.conditionFacts.length === 7
       ? '证据链完整'
       : '证据链有缺口';
   return {
@@ -528,6 +586,59 @@ export function buildTaiyiEvidence(data: TaiyiEvidenceInput): TaiyiEvidenceAnaly
       sources: [`${scopeLabel}${data.accumulatedLabel}与阴阳遁规则`, '太乙七十二局循环规则'],
       limitation: CALCULATION_STEP_LIMITATION,
     },
+    {
+      key: 'taiyi:calculation:three-gates',
+      name: '三门',
+      status: '已复算',
+      input: data.accumulatedValue,
+      operation: `240周期余数${data.conditions.threeGates.directGateRemainder}按每30换直使${data.conditions.threeGates.directGate}`,
+      result: data.conditions.threeGates.status,
+      dependsOnStepKeys: ['taiyi:calculation:bureau'],
+      basis: data.conditions.threeGates.basis,
+      promptText: `三门：直使${data.conditions.threeGates.directGate}；${data.conditions.threeGates.status}；${data.conditions.threeGates.blockedRoles.join('、') || '太乙与文昌主目均未落三吉门，始击门位单列'}`,
+      sources: [
+        '《太乙金镜式经》卷四·推三门具不具',
+        '《太乙金镜式经》卷二·天目、主目与客目定义',
+        '三门直使与太乙、文昌主目逐宫比较',
+      ],
+      limitation: CALCULATION_STEP_LIMITATION,
+    },
+    {
+      key: 'taiyi:calculation:five-generals',
+      name: '五将',
+      status: '已复算',
+      input: data.bureau,
+      operation:
+        '按卷四三项发将条件核验始击掩击、文昌囚迫与主客四将同宫关；格、对及二目五行关系另列',
+      result: data.conditions.fiveGenerals.launched ? '发' : '不发',
+      dependsOnStepKeys: ['taiyi:calculation:bureau'],
+      basis: data.conditions.fiveGenerals.basis,
+      promptText: `五将：${data.conditions.fiveGenerals.launched ? '发' : '不发'}；始击${data.conditions.fiveGenerals.shiJiNoCoverOrHit ? '无掩击' : '有掩击'}；文昌${data.conditions.fiveGenerals.wenChangNoImprisonOrPressure ? '无囚迫' : '有囚迫'}；主客四将${data.conditions.fiveGenerals.hostGuestNoSamePalaceRelation ? '无同宫关' : '有同宫关'}；客目/客将格、文昌对及二目五行关系另列为${data.conditions.fiveGenerals.hostGuestElementRelation.relation}`,
+      sources: [
+        '《太乙金镜式经》卷四·推五将发不发',
+        '《太乙金镜式经》卷三·推关法、推格法、推对法',
+        '《太乙金镜式经》卷四·推主客相关法（二目五行制化单列）',
+      ],
+      limitation: CALCULATION_STEP_LIMITATION,
+    },
+    {
+      key: 'taiyi:calculation:yin-yang-harmony',
+      name: '阴阳和',
+      status: '已复算',
+      input: data.bureau,
+      operation: '太乙八宫、两目正宫/间辰与主客算奇偶逐项配合',
+      result: data.conditions.yinYangHarmony.matched ? '和' : '不和',
+      dependsOnStepKeys: ['taiyi:calculation:bureau'],
+      basis: data.conditions.yinYangHarmony.basis,
+      promptText: `阴阳和：${data.conditions.yinYangHarmony.matched ? '和' : '不和'}；${data.conditions.yinYangHarmony.pairFacts
+        .map(
+          (item) =>
+            `${item.role}${item.polarity}${item.count}${item.countPolarity}${item.matched ? '和' : '不和'}`,
+        )
+        .join('、')}`,
+      sources: ['《太乙金镜式经·推阴阳和不和》', '太乙八宫与十六神正宫、间辰阴阳配算规则'],
+      limitation: CALCULATION_STEP_LIMITATION,
+    },
   ];
   if (
     positiveOneBased(data.accumulatedValue, 360) !== data.entryYears ||
@@ -544,6 +655,9 @@ export function buildTaiyiEvidence(data: TaiyiEvidenceInput): TaiyiEvidenceAnaly
     `积数按七十二局循环定位${data.yinYang}第${data.bureau}局`,
     '按对应阴阳遁七十二局立成表读取太乙、文昌、始击及主客定算',
     '由主客定算余数定位主客定大将与参将，计神及十六神作为辅助定位资料',
+    `按二百四十周期每三十换直使并将直门加临太乙，按${data.conditions.threeGates.gateScope}逐项复算，${data.conditions.threeGates.status}；始击门位单列，客方专用门具不并入本栏`,
+    `按卷四三项发将条件复算五将${data.conditions.fiveGenerals.launched ? '发' : '不发'}；主客四将同宫关、客目/客将格、文昌对及二目五行关系分别记录`,
+    `按太乙、两目宫辰与主客算奇偶复算阴阳${data.conditions.yinYangHarmony.matched ? '和' : '不和'}`,
   ];
   const primaryFacts = [
     `${data.yinYang}第${data.bureau}局，太乙在${palaceText(data.taiyiPosition, data.taiyiPalace)}`,
@@ -553,10 +667,16 @@ export function buildTaiyiEvidence(data: TaiyiEvidenceInput): TaiyiEvidenceAnaly
   ];
   if (isCover) primaryFacts.push('掩成立：始击与太乙同宫');
   if (isImprison) primaryFacts.push('囚成立：文昌或主客大小将至少一项与太乙同宫');
+  primaryFacts.push(
+    `${data.conditions.threeGates.status}：直使${data.conditions.threeGates.directGate}；五将${data.conditions.fiveGenerals.launched ? '发' : '不发'}；阴阳${data.conditions.yinYangHarmony.matched ? '和' : '不和'}`,
+  );
 
   const supportingFacts = [
     `计神在${palaceText(data.jiShenPosition, data.jiShenPalace)}`,
     `十六神固定定位：${data.sixteenGods.map((item) => `${item.branch}${item.god}`).join('、')}`,
+    `门将条件来源与计算基础：${data.conditions.threeGates.basis}`,
+    `五将条件来源与计算基础：${data.conditions.fiveGenerals.basis}`,
+    `阴阳和条件来源与计算基础：${data.conditions.yinYangHarmony.basis}`,
   ];
   const counterEvidenceFacts = buildCounterEvidenceFacts(conditionFacts);
   const counterSummaryFact = buildCounterSummaryFact(counterEvidenceFacts);
@@ -650,7 +770,7 @@ export function buildTaiyiEvidence(data: TaiyiEvidenceInput): TaiyiEvidenceAnaly
     '【太乙四计七十二局结构化证据】',
     ...formatPromptEvidenceBundle(evidence),
     `计算链：${calculationChain.join(' → ')}。`,
-    `算式核验：${calculationSteps.map((step) => `${step.key} ${step.name}${step.operation}=${step.result}`).join('；')}。`,
+    `算式核验：${calculationSteps.map((step) => `${step.name}：${step.operation}=${step.result}`).join('；')}。`,
     `反证核验：${counterSummaryFact.promptText}。`,
     `证据汇总：${summaryFact.promptText}。`,
     `解释限制（方法限制）：${limitations.join('；')}。`,
@@ -665,6 +785,7 @@ export function buildTaiyiEvidence(data: TaiyiEvidenceInput): TaiyiEvidenceAnaly
     forceFacts,
     sixteenGodFacts,
     conditionFacts,
+    conditions: data.conditions,
     primaryFacts,
     supportingFacts,
     counterEvidence,
@@ -678,6 +799,9 @@ export function buildTaiyiEvidence(data: TaiyiEvidenceInput): TaiyiEvidenceAnaly
     methodology: [
       '先按所选计式独立计算积数、360周期余数、72/60数段、阴阳遁与七十二局；数段只用于复算，不替代尚未统一版本口径的元纪。',
       '再读取太乙、文昌、始击及主客定算立成，比较同宫结构并定位将参。',
+      '依所采用的《太乙金镜式经》直门法计算三门，按太乙与文昌主目判定主门具否，始击门位及客方专用门具另列。',
+      '依卷四三项发将条件记录始击掩击、文昌囚迫与主客四将同宫关；格、对及二目五行制化分别列示，不把不同章节的“关”合成一个条件。',
+      '按太乙八宫、两目正宫/间辰与主客算奇偶逐项配合，明确记录阴阳和不和。',
       '计神和十六神只列为辅助定位，不覆盖局数、主客目与主客定算主线。',
       '同时输出成立与不成立的结构，避免只罗列支持证据。',
       '保留传统规则来源与现代实证边界，不生成分数、概率或绝对应期。',

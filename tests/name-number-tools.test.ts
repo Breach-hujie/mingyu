@@ -25,6 +25,28 @@ test('汉字解析区分现代笔画与康熙笔画并报告未知字', () => {
   assert.deepEqual(result.unknownCharacters, []);
 });
 
+test('汉字查询、候选字与姓名资料的返回值不会污染后续解读', () => {
+  const original = analyzeChineseCharacters('万').characters[0].detail!;
+  original.kangxiStrokes = 999;
+  assert.equal(analyzeChineseCharacters('万').totalKangxiStrokes, 15);
+  const selected = selectChineseCharacters({ limit: 1 });
+  const selectedChar = selected[0].char;
+  const strokes = selected[0].kangxiStrokes;
+  selected[0].kangxiStrokes = 999;
+  assert.equal(analyzeChineseCharacters(selectedChar).totalKangxiStrokes, strokes);
+  const candidate = selectNamingCharacters({ preferredCharacters: '宁', limit: 1 })[0];
+  const candidateStrokes = candidate.kangxiStrokes;
+  candidate.kangxiStrokes = 999;
+  assert.equal(analyzeChineseCharacters(candidate.char).totalKangxiStrokes, candidateStrokes);
+  const name = analyzeChineseName({ fullName: '李清宁' });
+  const expectedSancai = { ...name.sancai! };
+  name.sancai!.text = '被改写的三才解释';
+  Reflect.set(name.namingTradition.methods[0], 'meaning', '被改写的命名解释');
+  const next = analyzeChineseName({ fullName: '李清宁' });
+  assert.deepEqual(next.sancai, expectedSancai);
+  assert.notEqual(next.namingTradition.methods[0].meaning, '被改写的命名解释');
+});
+
 test('起名与姓名解析可结合出生喜用并生成完整提示词', () => {
   const birth = {
     gender: 'male' as const,
@@ -300,4 +322,26 @@ test('孔明神卦完整覆盖32种五钱阴阳组合并支持随机重放', () 
   const replay = castKongmingHexagram(undefined, { replay: first.random?.samples });
   assert.equal(replay.symbol, first.symbol);
   assert.equal(replay.number, first.number);
+});
+
+test('起名数量必须有限且为整数，避免NaN绕过候选上限', () => {
+  for (const limit of [NaN, Infinity, -Infinity, 1.5]) {
+    assert.throws(() => generateChineseNames({ surname: '李', limit }), /有限整数/);
+    assert.throws(() => selectNamingCharacters({ limit }), /有限整数/);
+  }
+  assert.throws(() => selectNamingCharacters({ gender: '未知' as never }), /性别取值无效/);
+  assert.throws(
+    () => generateChineseNames({ surname: '李', givenNameLength: 3 as never }),
+    /名字长度/,
+  );
+});
+
+test('号码解读关键词在每次结果与分组间独立保存', () => {
+  const result = analyzeNumber('1313');
+  const expected = [...result.energyPairs[0].keywords];
+  result.energyPairs[0].keywords.push('本次备注');
+  assert.deepEqual(result.magneticDistribution[0].keywords, expected);
+  result.magneticDistribution[0].keywords.push('分组备注');
+  assert.deepEqual(analyzeNumber('1313').energyPairs[0].keywords, expected);
+  assert.deepEqual(analyzeNumber('1313').magneticDistribution[0].keywords, expected);
 });

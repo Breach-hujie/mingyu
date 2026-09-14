@@ -76,7 +76,10 @@ test('北京夏至应给出可复核的日出日落、太阳高度与曙暮光',
   assert.match(evidence.promptText, /真北起顺时针/);
   assert.match(evidence.promptText, /日出\/日落：太阳高度-0\.833°阈值/);
   assert.match(evidence.promptText, /不宣称达到观测级或导航级精度/);
-  assert.equal(evidence.key, 'solar-illumination:2024-06-21:39.9042:116.4074');
+  assert.equal(
+    evidence.key,
+    'solar-illumination:2024-06-21:39.9042:116.4074:2024-06-21 04:00:00Z:UTC+8',
+  );
   assert.equal(evidence.status, '已计算');
   assert.equal(evidence.astronomicalTime.status, '已计算');
   assert.deepEqual(
@@ -185,6 +188,74 @@ test('太阳光照证据应复用IANA历史时区并拒绝非法坐标', () => {
         longitude: Number.NaN,
       }),
     /经度需在 -180 至 180 之间/,
+  );
+});
+
+test('太阳光照证据 key 应区分参考时刻和解析时区', () => {
+  const base = {
+    year: 2024,
+    month: 6,
+    day: 21,
+    latitude: 39.9042,
+    longitude: 116.4074,
+  } as const;
+  const midnight = calculateSolarIlluminationEvidence({ ...base, hour: 0, timezone: 8 });
+  const noon = calculateSolarIlluminationEvidence({ ...base, hour: 12, timezone: 8 });
+  const differentTimezone = calculateSolarIlluminationEvidence({
+    ...base,
+    hour: 12,
+    timezone: 9,
+  });
+
+  assert.notEqual(midnight.key, noon.key);
+  assert.notEqual(noon.key, differentTimezone.key);
+  assert.equal(
+    noon.key,
+    'solar-illumination:2024-06-21:39.9042:116.4074:2024-06-21 04:00:00Z:UTC+8',
+  );
+  assert.match(differentTimezone.key, /:2024-06-21 03:00:00Z:UTC\+9$/);
+  assert.notEqual(midnight.solarAltitudeDegrees, noon.solarAltitudeDegrees);
+});
+
+test('经度端点在 UTC-12 和 UTC+14 应保持同子午线事件日期与时刻', () => {
+  const calculateAt = (longitude: -180 | 180, timezone: -12 | 14) =>
+    calculateSolarIlluminationEvidence({
+      year: 2024,
+      month: 1,
+      day: 1,
+      hour: 12,
+      timezone,
+      latitude: 0,
+      longitude,
+    });
+
+  for (const timezone of [-12, 14] as const) {
+    const west = calculateAt(-180, timezone);
+    const east = calculateAt(180, timezone);
+    assert.equal(west.apparentSolarNoonLocalDateTime, east.apparentSolarNoonLocalDateTime);
+    assert.equal(west.apparentSolarNoonUtcDateTime, east.apparentSolarNoonUtcDateTime);
+    assert.equal(west.sunriseSunset.morningLocalDateTime, east.sunriseSunset.morningLocalDateTime);
+    assert.equal(west.sunriseSunset.eveningLocalDateTime, east.sunriseSunset.eveningLocalDateTime);
+    assert.match(west.apparentSolarNoonLocalDateTime, /^2024-01-01 /);
+    assert.match(west.sunriseSunset.morningLocalDateTime ?? '', /^2024-01-01 /);
+    assert.match(west.sunriseSunset.eveningLocalDateTime ?? '', /^2024-01-01 /);
+  }
+
+  const crossingMidnight = calculateSolarIlluminationEvidence({
+    year: 2024,
+    month: 1,
+    day: 1,
+    hour: 12,
+    timezone: 0,
+    latitude: 0,
+    longitude: 180,
+  });
+  assert.match(crossingMidnight.apparentSolarNoonLocalDateTime, /^2024-01-01 00:/);
+  assert.match(crossingMidnight.sunriseSunset.morningLocalDateTime ?? '', /^2023-12-31 /);
+  assert.match(crossingMidnight.sunriseSunset.eveningLocalDateTime ?? '', /^2024-01-01 /);
+  assert.ok(
+    Date.parse(crossingMidnight.sunriseSunset.morningUtcDateTime ?? '') <
+      Date.parse(crossingMidnight.sunriseSunset.eveningUtcDateTime ?? ''),
   );
 });
 

@@ -68,10 +68,11 @@ export const MingluWikiView: React.FC<MingluWikiViewProps> = ({ article }) => {
     article.pillarsSection.columns.forEach((col) => {
       md += `- **${col.label}**：${col.gan}${col.zhi}（${col.ganTenGod} / ${col.zhiTenGod}，纳音${col.nayin}，自坐${col.ziZuo}，长生${col.lifeStage}）\n`;
     });
-    md += `\n## 二、五行能量打分\n`;
+    md += `\n## 二、五行结构加权分布\n`;
     article.fiveElementsSection.elements.forEach((el) => {
-      md += `- ${el.wuxing}行：${el.score}分 (${el.percentage}%) [${el.seasonStatus}]\n`;
+      md += `- ${el.wuxing}行：${el.score}加权计数 (${el.percentage}%) [${el.seasonStatus}]\n`;
     });
+    md += `${article.fiveElementsSection.dayMasterStrength.judgmentSummary}\n`;
     md += `\n## 三、格局成败与用神\n`;
     md += `- 主格：${article.patternUsefulGodSection.pattern.name}\n`;
     md += `- 核心用神：${article.patternUsefulGodSection.usefulGods.primaryUseful}\n`;
@@ -79,7 +80,8 @@ export const MingluWikiView: React.FC<MingluWikiViewProps> = ({ article }) => {
 
     md += `\n## 四、柱间作用关系\n`;
     article.interactionsSection.forEach((item) => {
-      md += `- 【${item.category}】${item.name}：${item.description}\n`;
+      md += `- 【${item.category}】${item.name}${item.conditionStatus ? `（${item.conditionStatus}）` : ''}：${item.influence}\n`;
+      if (item.conditionEvidence?.length) md += `  ${item.conditionEvidence.join('；')}\n`;
     });
 
     md += `\n## 五、全息神煞\n`;
@@ -109,7 +111,8 @@ export const MingluWikiView: React.FC<MingluWikiViewProps> = ({ article }) => {
             type="button"
             className="minglu-mobile-toc-toggle"
             onClick={() => setIsMobileTocOpen(!isMobileTocOpen)}
-            aria-label="打开目录"
+            aria-label={isMobileTocOpen ? '关闭目录' : '打开目录'}
+            aria-expanded={isMobileTocOpen}
           >
             目录 ({article.tableOfContents.length})
           </button>

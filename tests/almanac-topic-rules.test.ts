@@ -13,11 +13,16 @@ test('黄历择日：事项匹配只映射 tyme4ts 原始宜忌，不生成本�
   assert.ok(
     result.days.every(
       (day) =>
-        day.topicMatchFacts?.length === 2 &&
+        day.topicMatchFacts?.some((fact) => fact.key.endsWith(':day-recommends')) &&
+        day.topicMatchFacts.some((fact) => fact.key.endsWith(':day-avoids')) &&
         day.topicMatchFacts.every(
           (fact) =>
             !fact.key.includes(':topic:rule-') &&
-            (fact.sourceType === '原始宜项' || fact.sourceType === '原始忌项'),
+            (fact.sourceType === '原始宜项' || fact.sourceType === '原始忌项') &&
+            fact.matchedItems.every((item) => fact.inputItems.includes(item)) &&
+            (!fact.key.endsWith(':day-general-constraint') ||
+              (fact.status === '限制' &&
+                fact.matchedItems.some((item) => /诸事不宜|[余馀]事勿取/u.test(item)))),
         ),
     ),
   );

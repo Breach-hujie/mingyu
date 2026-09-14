@@ -57,6 +57,7 @@ export function drawRandomSign(
   return attachResultMeta(
     {
       ...sign,
+      details: { ...sign.details },
       timestamp,
       ganzhi,
       draw: {
@@ -88,6 +89,7 @@ export function resolveSignByNumber(number: number, customDate?: Date): SsgwData
   return attachResultMeta(
     {
       ...sign,
+      details: { ...sign.details },
       timestamp,
       ganzhi,
       draw: {

@@ -3,7 +3,17 @@
  */
 export { baziCalculator, BaziCalculator } from './baziCalculator';
 export { evaluatePatternFulfillment } from './baziPatternFulfillment';
-export type { PatternFulfillmentResult, PatternRemedy } from './baziPatternFulfillment';
+export type {
+  PatternConditionFact,
+  PatternConditionStatus,
+  PatternFulfillmentOptions,
+  PatternFulfillmentResult,
+  PatternInteractionEvidence,
+  PatternPathPosition,
+  PatternPathEvaluation,
+  PatternRemedy,
+  PatternStemEvidence,
+} from './baziPatternFulfillment';
 export { buildBaziPersonInput, calculateBaziChartFromInput } from './input';
 export type { BaziChartInputDraft, BaziInputText } from './input';
 export { formatBaziForPrompt } from './baziAnalysisFormatter';

@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { resolveCivilTime } from '../packages/core/src/calendar/civil-time.ts';
+import { calculateSolarTermEvidence } from '../packages/core/src/calendar/solar-term-evidence.ts';
 import {
   generateQizheng,
   palaceIndexByLimitStep,
@@ -7,6 +9,7 @@ import {
   resolveQizhengNominalAge,
   TWELVE_PALACES,
 } from '../packages/core/src/qi_zheng/index.ts';
+import { scanQizhengPeriodEvents } from '../packages/core/src/qi_zheng/period-events.ts';
 
 const NATAL = {
   year: 1990,
@@ -17,6 +20,18 @@ const NATAL = {
   latitude: 39.9042,
   longitude: 116.4074,
   timezone: 8,
+} as const;
+
+const NEW_YORK_SUMMER_BIRTH = {
+  year: 1990,
+  month: 6,
+  day: 15,
+  hour: 10,
+  minute: 30,
+  latitude: 40.7128,
+  longitude: -74.006,
+  timezone: -4,
+  timeZoneId: 'America/New_York',
 } as const;
 
 test('行限：阳男阴女顺行，阴男阳女逆行，虚岁按流年减出生年加一', () => {
@@ -81,4 +96,205 @@ test('只有流年没有性别时只排流曜，不编造行限', () => {
   assert.equal(result.flowingStars?.periodEvents?.mode, 'yearly');
   assert.ok((result.flowingStars?.periodEvents?.events.length ?? 0) > 0);
   assert.doesNotMatch(result.prompt, /【行限】/);
+});
+
+test('流年上限 2200 的年度周期应闭合到次年立春', () => {
+  const result = generateQizheng({
+    ...NATAL,
+    flowYear: 2200,
+  });
+  const flow = result.flowingStars;
+  const period = flow?.periodEvents;
+  assert.ok(flow);
+  assert.ok(period);
+  assert.equal(flow.year, 2200);
+  assert.equal(period.mode, 'yearly');
+  assert.match(period.startDateTime, /^2200-02-04 /);
+  assert.match(period.endDateTime, /^2201-02-04 /);
+  assert.equal(flow.stars.length, 11);
+});
+
+test('流年立春按目标 IANA 时区反解且不沿用出生时刻偏移', () => {
+  const result = generateQizheng({
+    ...NEW_YORK_SUMMER_BIRTH,
+    flowYear: 2024,
+  });
+  const flow = result.flowingStars;
+  assert.ok(flow);
+  const lichunUtc = calculateSolarTermEvidence(2024, 3).utcTimestamp;
+  const flowUtc = resolveCivilTime({
+    year: flow.year,
+    month: flow.month,
+    day: flow.day,
+    hour: flow.hour,
+    minute: flow.minute,
+    second: 0,
+    timeZoneId: NEW_YORK_SUMMER_BIRTH.timeZoneId,
+  }).utcTimestamp;
+  // 流曜输入目前只有分钟精度，允许立春证据与墙钟输入相差不足一分钟。
+  assert.ok(Math.abs(flowUtc - lichunUtc) < 60_000, `${flowUtc} !== ${lichunUtc}`);
+  assert.equal(flow.localDateTime, '2024-02-04T03:27:00');
+});
+
+test('出生时刻的 IANA 与固定偏移冲突仍然拒绝排盘', () => {
+  assert.throws(
+    () =>
+      generateQizheng({
+        ...NEW_YORK_SUMMER_BIRTH,
+        timezone: -5,
+      }),
+    /历史偏移不一致/,
+  );
+});
+
+test('显式流日按纽约目标日期的冬夏偏移解析', () => {
+  for (const target of [
+    { month: 1, day: 15, expectedUtcOffset: -5 },
+    { month: 7, day: 15, expectedUtcOffset: -4 },
+  ]) {
+    const input = {
+      ...NEW_YORK_SUMMER_BIRTH,
+      flowYear: 2024,
+      flowMonth: target.month,
+      flowDay: target.day,
+      flowHour: 12,
+    } as const;
+    const result = generateQizheng(input);
+    // 独立固定偏移盘只用于核验目标 UTC 瞬时，避免测试只比较同一份 wall time 标签。
+    const fixedOffsetResult = generateQizheng({
+      ...input,
+      timezone: target.expectedUtcOffset,
+      timeZoneId: undefined,
+    });
+    const flow = result.flowingStars;
+    const fixedFlow = fixedOffsetResult.flowingStars;
+    assert.ok(flow);
+    assert.ok(fixedFlow);
+    const expectedUtc =
+      Date.UTC(2024, target.month - 1, target.day, 12) - target.expectedUtcOffset * 3_600_000;
+    const flowUtc = resolveCivilTime({
+      year: flow.year,
+      month: flow.month,
+      day: flow.day,
+      hour: flow.hour,
+      minute: flow.minute,
+      second: 0,
+      timeZoneId: NEW_YORK_SUMMER_BIRTH.timeZoneId,
+    }).utcTimestamp;
+    assert.equal(flowUtc, expectedUtc);
+    assert.equal(
+      flow.stars.find((star) => star.name === '太阳')?.tropicalLongitude,
+      fixedFlow.stars.find((star) => star.name === '太阳')?.tropicalLongitude,
+    );
+    assert.equal(
+      flow.localDateTime,
+      `2024-${String(target.month).padStart(2, '0')}-${String(target.day).padStart(2, '0')}T12:00:00`,
+    );
+  }
+});
+
+test('纽约夏令时跳时日的周期事件按每个 UTC 瞬时实际偏移格式化', () => {
+  const hour = 3_600_000;
+  // 2024-03-10 06:00Z 是纽约 01:00 EST，07:00Z 已跳到 03:00 EDT。
+  const startUtcMs = Date.UTC(2024, 2, 10, 6);
+  const result = scanQizhengPeriodEvents({
+    natalStars: [],
+    twelvePalaces: [],
+    startUtcMs,
+    endUtcMs: startUtcMs + 2 * hour,
+    // 故意保留出生夏季偏移；IANA 格式化必须在每个事件时刻读取实际偏移。
+    timezone: -4,
+    timeZoneId: 'America/New_York',
+    mode: 'daily',
+    sampleLongitudes: (utcMs) => [{ name: '太阳', longitude: 28.5 + (utcMs - startUtcMs) / hour }],
+  });
+  assert.equal(result.startDateTime, '2024-03-10 01:00');
+  assert.equal(result.endDateTime, '2024-03-10 04:00');
+  const ingress = result.events.find((event) => event.kind === '换宫');
+  assert.ok(ingress);
+  assert.ok(Math.abs(ingress.utcMs - Date.UTC(2024, 2, 10, 7, 30)) < 1000);
+  const localParts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(ingress.utcMs));
+  const part = (type: string) => localParts.find((item) => item.type === type)?.value;
+  assert.equal(
+    ingress.dateTime,
+    `${part('year')}-${part('month')}-${part('day')} ${part('hour')}:${part('minute')}`,
+  );
+  assert.match(ingress.promptText, /^2024-03-10 03:/);
+});
+
+test('纽约三月流月周期按两个 IANA 午夜解析并跨越夏令时少一小时', () => {
+  const result = generateQizheng({
+    ...NEW_YORK_SUMMER_BIRTH,
+    flowYear: 2024,
+    flowMonth: 3,
+  });
+  const period = result.flowingStars?.periodEvents;
+  assert.ok(period);
+  const expectedStartUtc = resolveCivilTime({
+    year: 2024,
+    month: 3,
+    day: 1,
+    hour: 0,
+    minute: 0,
+    second: 0,
+    timeZoneId: NEW_YORK_SUMMER_BIRTH.timeZoneId,
+  }).utcTimestamp;
+  const expectedEndUtc = resolveCivilTime({
+    year: 2024,
+    month: 4,
+    day: 1,
+    hour: 0,
+    minute: 0,
+    second: 0,
+    timeZoneId: NEW_YORK_SUMMER_BIRTH.timeZoneId,
+  }).utcTimestamp;
+  assert.equal(expectedEndUtc - expectedStartUtc, 31 * 86_400_000 - 3_600_000);
+  assert.ok(period.events.length > 0);
+  assert.ok(
+    period.events.every(
+      (event) => event.utcMs >= expectedStartUtc && event.utcMs <= expectedEndUtc,
+    ),
+  );
+  assert.equal(period.startDateTime, '2024-03-01 00:00');
+  assert.equal(period.endDateTime, '2024-04-01 00:00');
+});
+
+test('纽约跳时和回拨日的扫描周期均止于次日当地午夜', () => {
+  for (const target of [
+    { month: 3, day: 10, hours: 23, startUtc: Date.UTC(2024, 2, 10, 5) },
+    { month: 11, day: 3, hours: 25, startUtc: Date.UTC(2024, 10, 3, 4) },
+  ]) {
+    const period = generateQizheng({
+      ...NEW_YORK_SUMMER_BIRTH,
+      flowYear: 2024,
+      flowMonth: target.month,
+      flowDay: target.day,
+    }).flowingStars?.periodEvents;
+    assert.ok(period);
+    const month = String(target.month).padStart(2, '0');
+    assert.equal(
+      period.startDateTime,
+      `2024-${month}-${String(target.day).padStart(2, '0')} 00:00`,
+    );
+    assert.equal(
+      period.endDateTime,
+      `2024-${month}-${String(target.day + 1).padStart(2, '0')} 00:00`,
+    );
+    assert.ok(period.events.length > 0);
+    assert.ok(
+      period.events.every(
+        (event) =>
+          event.utcMs >= target.startUtc &&
+          event.utcMs <= target.startUtc + target.hours * 3_600_000,
+      ),
+    );
+  }
 });

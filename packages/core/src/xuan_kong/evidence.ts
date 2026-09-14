@@ -55,7 +55,17 @@ export interface XuanKongEvidenceSourceResult {
     verificationSourceUrl: string;
   };
   castleGate?: { summary: string };
-  measurement?: { stability: string };
+  measurement?: {
+    stability: string;
+    sitDegree?: number;
+    facingDegree?: number;
+    uncertaintyDegrees?: number;
+    nearestBoundaryDistanceDegrees?: number;
+    nearestCentralNineBoundaryDistanceDegrees?: number;
+    boundaryReasons?: string[];
+    candidateMountains?: Array<{ sitMountain: string; facingMountain: string; label: string }>;
+    warnings?: string[];
+  };
 }
 
 export interface XuanKongEvidenceAnalysis {
@@ -232,12 +242,36 @@ export function analyzeXuanKongEvidence(
   }
 
   const counterFacts = [];
-  if (result.measurement?.stability && result.measurement.stability !== '稳定') {
+  if (
+    result.measurement?.stability &&
+    (result.measurement.stability !== '稳定' || result.measurement.warnings?.length)
+  ) {
+    const measurement = result.measurement;
+    const candidates = measurement.candidateMountains ?? [];
+    const measurementDetails = [
+      `山向测量稳定性为${measurement.stability}`,
+      measurement.sitDegree !== undefined && measurement.facingDegree !== undefined
+        ? `坐山${measurement.sitDegree}°、朝向${measurement.facingDegree}°、误差±${measurement.uncertaintyDegrees ?? '未知'}°`
+        : '',
+      `边界原因：${measurement.boundaryReasons?.join('、') || '具体边界原因未提供'}`,
+      measurement.nearestBoundaryDistanceDegrees !== undefined
+        ? `距二十四山分界${measurement.nearestBoundaryDistanceDegrees}°`
+        : '',
+      measurement.nearestCentralNineBoundaryDistanceDegrees !== undefined
+        ? `距中央九度分界${measurement.nearestCentralNineBoundaryDistanceDegrees}°`
+        : '',
+      candidates.length
+        ? `候选山向（${candidates.length}个）：${candidates.map((item) => item.label).join('、')}`
+        : measurement.boundaryReasons?.includes('中央九度分界')
+          ? '中央九度分界下二十四山山向仍按当前单一候选记录；复测确认位于中央九度内时用下卦，核定兼向外侧三度时可选替卦'
+          : '',
+      measurement.warnings?.length ? `测量提示：${measurement.warnings.join('；')}` : '',
+    ].filter(Boolean);
     counterFacts.push({
       key: 'xuankong:counter:measurement',
       type: '测量边界',
-      promptText: `山向测量稳定性为${result.measurement.stability}，应保留候选山向`,
-      sources: ['罗盘度数与二十四山边界'],
+      promptText: measurementDetails.join('；'),
+      sources: ['罗盘度数、二十四山边界与中央九度下卦/兼向边界'],
       limitation: COUNTER_LIMIT,
     });
   }

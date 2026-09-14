@@ -61,30 +61,42 @@ export const ALMANAC_TOPIC_LABELS: Record<AlmanacTopic, string> = {
 };
 
 const TOPIC_RECOMMEND_KEYWORDS: Record<AlmanacTopic, string[]> = {
-  move: ['入宅', '移徙', '安床', '修造', '动土'],
-  marriage: ['嫁娶', '纳采', '订盟', '会亲友', '冠笄', '成服', '安床'],
-  opening: ['开市', '交易', '立券', '纳财', '开仓', '出货财', '挂匾'],
-  contract: ['交易', '立券', '纳财', '会亲友'],
-  travel: ['出行', '赴任', '移徙'],
-  medical: ['求医', '治病', '解除'],
-  study: ['入学', '求嗣', '祭祀', '祈福'],
+  move: ['入宅', '移徙'],
+  marriage: ['嫁娶', '纳采', '订盟'],
+  opening: ['开市'],
+  contract: ['交易', '立券'],
+  travel: ['出行', '赴任'],
+  medical: ['求医', '治病'],
+  study: ['入学'],
   burial: ['安葬', '修坟', '启钻', '立碑', '入殓', '移柩', '成服', '除服'],
   renovation: ['修造', '动土', '竖柱', '上梁', '盖屋', '起基'],
   custom: [],
 };
 
 const TOPIC_AVOID_KEYWORDS: Record<AlmanacTopic, string[]> = {
-  move: ['入宅', '移徙', '安床'],
+  move: ['入宅', '移徙'],
   marriage: ['嫁娶', '纳采', '订盟'],
-  opening: ['开市', '交易', '立券'],
+  opening: ['开市'],
   contract: ['交易', '立券'],
   travel: ['出行', '赴任'],
   medical: ['求医', '治病'],
-  study: ['入学', '求嗣'],
+  study: ['入学'],
   burial: ['安葬', '修坟', '启钻'],
   renovation: ['修造', '动土', '竖柱', '上梁'],
   custom: [],
 };
+
+function getGeneralRestriction(
+  recommends: string[],
+  avoids: string[],
+  recommendMatches: string[],
+): string | null {
+  const items = [...recommends, ...avoids];
+  if (items.includes('诸事不宜')) return '原始宜忌明列诸事不宜';
+  if (items.some((item) => /[馀余]事勿取/.test(item)) && recommendMatches.length === 0)
+    return '原始宜忌列余事勿取，本次事项未列在明确宜项中';
+  return null;
+}
 
 function assertAlmanacTopic(topic: AlmanacTopic): void {
   if (!Object.prototype.hasOwnProperty.call(ALMANAC_TOPIC_LABELS, topic)) {
@@ -736,6 +748,32 @@ function buildDayFacts(params: {
   const avoidKeywords = TOPIC_AVOID_KEYWORDS[params.topic];
   const recommendMatches = findKeywordMatches(params.recommends, recommendKeywords);
   const avoidMatches = findKeywordMatches(params.avoids, avoidKeywords);
+  const generalRestriction = getGeneralRestriction(
+    params.recommends,
+    params.avoids,
+    recommendMatches,
+  );
+  if (generalRestriction) {
+    cautions.push(generalRestriction);
+    topicMatchFacts.push(
+      buildTopicMatchFact({
+        key: `${params.dateKey}:topic:day-general-constraint`,
+        scope: '候选日',
+        topic: params.topic,
+        sourceType: params.avoids.some((item) => /诸事不宜|[余馀]事勿取/u.test(item))
+          ? '原始忌项'
+          : '原始宜项',
+        status: '限制',
+        inputItems: [...params.recommends, ...params.avoids],
+        keywords: [],
+        matchedItems: [...params.recommends, ...params.avoids].filter((item) =>
+          /诸事不宜|[余馀]事勿取/u.test(item),
+        ),
+        promptText: generalRestriction,
+        sources: ['tyme4ts 当日宜忌'],
+      }),
+    );
+  }
 
   topicMatchFacts.push(
     buildTopicMatchFact({
@@ -833,6 +871,7 @@ function buildHourCandidates(
   dateKey: string,
   lunarDay: AlmanacLunarDaySource,
   participants: AlmanacParticipantProfile[],
+  topic: AlmanacTopic,
 ): AlmanacHourCandidate[] {
   const lunarHours = lunarDay.getHours();
   if (lunarHours.length !== SHICHEN_PERIODS.length) {
@@ -857,6 +896,56 @@ function buildHourCandidates(
     const participantRelationFacts: AlmanacParticipantRelationFact[] = [];
     const hourName = period.name;
     const hourKey = `${dateKey}:hour:${ganzhi}:${hourName}`;
+    const recommends = normalizeTaboos(hour.getRecommends());
+    const avoids = normalizeTaboos(hour.getAvoids());
+    const topicMatchFacts = (['recommends', 'avoids'] as const).map((kind) => {
+      const inputItems = kind === 'recommends' ? recommends : avoids;
+      const keywords =
+        kind === 'recommends' ? TOPIC_RECOMMEND_KEYWORDS[topic] : TOPIC_AVOID_KEYWORDS[topic];
+      const matchedItems = findKeywordMatches(inputItems, keywords);
+      const status = matchedItems.length ? (kind === 'recommends' ? '支持' : '限制') : '中性';
+      const promptText = `${hourName}原始${kind === 'recommends' ? '宜' : '忌'}项${matchedItems.length ? `命中${ALMANAC_TOPIC_LABELS[topic]}：${matchedItems.join('、')}` : `未命中${ALMANAC_TOPIC_LABELS[topic]}`}`;
+      if (status === '支持') highlights.push(promptText);
+      if (status === '限制') cautions.push(promptText);
+      return buildTopicMatchFact({
+        key: `${hourKey}:topic:hour-${kind}`,
+        scope: '时辰',
+        topic,
+        sourceType: kind === 'recommends' ? '原始宜项' : '原始忌项',
+        status,
+        inputItems,
+        keywords,
+        matchedItems,
+        promptText,
+        sources: ['tyme4ts 逐时宜忌', '当前事项关键词表'],
+      });
+    });
+    const generalRestriction = getGeneralRestriction(
+      recommends,
+      avoids,
+      topicMatchFacts[0].matchedItems,
+    );
+    if (generalRestriction) {
+      cautions.push(generalRestriction);
+      topicMatchFacts.push(
+        buildTopicMatchFact({
+          key: `${hourKey}:topic:hour-general-constraint`,
+          scope: '时辰',
+          topic,
+          sourceType: avoids.some((item) => /诸事不宜|[余馀]事勿取/u.test(item))
+            ? '原始忌项'
+            : '原始宜项',
+          status: '限制',
+          inputItems: [...recommends, ...avoids],
+          keywords: [],
+          matchedItems: [...recommends, ...avoids].filter((item) =>
+            /诸事不宜|[余馀]事勿取/u.test(item),
+          ),
+          promptText: generalRestriction,
+          sources: ['tyme4ts 逐时宜忌'],
+        }),
+      );
+    }
     participants.forEach((participant) => {
       const conflict = getParticipantBranchConflictSummary(branch, participant);
       participantRelationFacts.push(
@@ -880,6 +969,9 @@ function buildHourCandidates(
       ganzhi,
       branch,
       twelveStar,
+      recommends,
+      avoids,
+      topicMatchFacts,
       highlights,
       cautions,
       participantNotes,
@@ -927,7 +1019,7 @@ function buildDayCandidate(
   const twentyEightStar = lunarDay.getTwentyEightStar().getName();
   const nineStar = lunarDay.getNineStar().getName();
   const pengZuDetails = getAlmanacPengZuDetails(dayStemName, dayZhiName);
-  const hours = buildHourCandidates(dateKey, lunarDay, participants);
+  const hours = buildHourCandidates(dateKey, lunarDay, participants, topic);
 
   return {
     date: dateKey,

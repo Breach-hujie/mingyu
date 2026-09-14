@@ -160,6 +160,16 @@ function formatLocalTimestamp(timestamp: number, timezone: number) {
   return `${String(date.getUTCFullYear()).padStart(4, '0')}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')} ${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}:${String(date.getUTCSeconds()).padStart(2, '0')}`;
 }
 
+function normalizeDayMinutes(value: number) {
+  const normalized = value % 1440;
+  return normalized < 0 ? normalized + 1440 : normalized;
+}
+
+function formatTimezoneContext(timezone: number, timeZoneId?: string) {
+  const offset = `UTC${timezone >= 0 ? '+' : ''}${timezone}`;
+  return timeZoneId ? `${timeZoneId}@${offset}` : offset;
+}
+
 function solarParameters(timestamp: number) {
   const date = new Date(timestamp);
   const year = date.getUTCFullYear();
@@ -242,7 +252,9 @@ function crossingEvidence(
     };
   }
   const hourAngleDegrees = radiansToDegrees(Math.acos(cosineHourAngle));
-  const solarNoonMinutes = 720 - 4 * longitude - equationOfTimeMinutes + timezone * 60;
+  const solarNoonMinutes = normalizeDayMinutes(
+    720 - 4 * longitude - equationOfTimeMinutes + timezone * 60,
+  );
   const morningMinutes = solarNoonMinutes - 4 * hourAngleDegrees;
   const eveningMinutes = solarNoonMinutes + 4 * hourAngleDegrees;
   const morningTimestamp = localMidnightUtcTimestamp + morningMinutes * 60_000;
@@ -313,7 +325,9 @@ export function calculateSolarIlluminationEvidence(
     Date.UTC(input.year, input.month - 1, input.day) - timezone * 3_600_000;
   const localNoonUtcTimestamp = localMidnightUtcTimestamp + 12 * 3_600_000;
   const daily = solarParameters(localNoonUtcTimestamp);
-  const solarNoonMinutes = 720 - 4 * input.longitude - daily.equationOfTimeMinutes + timezone * 60;
+  const solarNoonMinutes = normalizeDayMinutes(
+    720 - 4 * input.longitude - daily.equationOfTimeMinutes + timezone * 60,
+  );
   const solarNoonTimestamp = localMidnightUtcTimestamp + solarNoonMinutes * 60_000;
   const eventArgs = [
     input.latitude,
@@ -526,8 +540,9 @@ export function calculateSolarIlluminationEvidence(
     sources: ['天文时间、太阳位置、阈值交点、全天状态、假设与限制事实汇总'],
     limitation: SUMMARY_FACT_LIMITATION,
   };
+  const timezoneContext = formatTimezoneContext(timezone, astronomicalTime.timeZoneId);
   return {
-    key: `solar-illumination:${localDate}:${input.latitude}:${input.longitude}`,
+    key: `solar-illumination:${localDate}:${input.latitude}:${input.longitude}:${astronomicalTime.utcDateTime}:${timezoneContext}`,
     status,
     localDate,
     referenceLocalDateTime: astronomicalTime.localDateTime,

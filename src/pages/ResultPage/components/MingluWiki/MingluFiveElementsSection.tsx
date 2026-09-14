@@ -31,7 +31,7 @@ export const MingluFiveElementsSection: React.FC<Props> = ({ data }) => {
 
       {/* 五行分布条形图与打分 */}
       <div id="bazi-elements-distribution" className="minglu-subblock">
-        <h3 className="minglu-subblock-title">五行能量打分与比例分布</h3>
+        <h3 className="minglu-subblock-title">五行结构加权分布</h3>
         <div className="minglu-elements-grid">
           {elements.map((el) => (
             <div key={el.wuxing} className="minglu-element-card">
@@ -47,21 +47,27 @@ export const MingluFiveElementsSection: React.FC<Props> = ({ data }) => {
               </div>
               <div className="minglu-element-score-wrap">
                 <span className="text-2xl font-black">{el.score}</span>
-                <span className="text-xs text-slate-500 ml-1">分 ({el.percentage}%)</span>
+                <span className="text-xs text-slate-500 ml-1">加权计数 ({el.percentage}%)</span>
               </div>
               <div className="minglu-progress-bar-bg">
                 <div
                   className="minglu-progress-bar-fill"
                   style={{
-                    width: `${Math.min(100, el.percentage * 2)}%`,
+                    width: `${el.percentage}%`,
                     backgroundColor: WUXING_COLORS[el.wuxing],
                   }}
                 />
               </div>
               <div className="text-xs text-slate-500 mt-2 flex justify-between">
-                <span>显露个数: {el.count}</span>
+                <span>干支本气次数: {el.count}</span>
                 <span>
-                  {el.isDominant ? '最旺' : el.isMissing ? '缺此行' : el.isWeakest ? '最弱' : '平'}
+                  {el.isDominant
+                    ? '计数最多'
+                    : el.isMissing
+                      ? '缺此行'
+                      : el.isWeakest
+                        ? '计数最少'
+                        : '有分布'}
                 </span>
               </div>
             </div>
@@ -143,7 +149,7 @@ export const MingluFiveElementsSection: React.FC<Props> = ({ data }) => {
             >
               <span className="minglu-dim-label">得助 (比劫帮扶)</span>
               <span className="minglu-dim-val">
-                {dayMasterStrength.dimensions.assisted ? '得比劫助' : '无比劫助'}
+                {dayMasterStrength.dimensions.assisted ? '透干有比劫' : '透干无比劫'}
               </span>
             </div>
           </div>
@@ -163,60 +169,6 @@ export const MingluFiveElementsSection: React.FC<Props> = ({ data }) => {
           </div>
         )}
       </div>
-
-      {/* 中医五行脏腑健康与调摄 */}
-      {data.healthTcmAdvice && data.healthTcmAdvice.length > 0 && (
-        <div id="bazi-elements-tcm-health" className="minglu-subblock mt-6">
-          <h3 className="minglu-subblock-title">中医五行脏腑映射与养生调和指引</h3>
-          <p className="text-xs text-slate-500 mb-3">
-            《黄帝内经》：“人以天地之气生，四时之法成。五脏应五行，各主其政。”根据命局五行强弱偏颇，推求五脏六腑气血荣衰与调养要旨。
-          </p>
-          <div className="minglu-tcm-grid">
-            {data.healthTcmAdvice.map((item) => (
-              <div
-                key={item.wuxing}
-                className={`minglu-tcm-card is-${
-                  item.status === '过旺耗伤'
-                    ? 'over'
-                    : item.status === '虚弱不足'
-                      ? 'under'
-                      : 'balance'
-                }`}
-              >
-                <div className="minglu-tcm-header">
-                  <span className="minglu-tcm-wuxing" style={{ color: WUXING_COLORS[item.wuxing] }}>
-                    {item.wuxing}行
-                  </span>
-                  <span className="minglu-tcm-organs">{item.organPair}</span>
-                  <span
-                    className={`minglu-tcm-status-badge is-${
-                      item.status === '过旺耗伤'
-                        ? 'over'
-                        : item.status === '虚弱不足'
-                          ? 'under'
-                          : 'balance'
-                    }`}
-                  >
-                    {item.status}
-                  </span>
-                </div>
-                <div className="minglu-tcm-body">
-                  <div className="text-xs text-slate-700 dark:text-slate-300 mb-2">
-                    <span className="font-semibold text-slate-900 dark:text-slate-100">
-                      气机感应：
-                    </span>
-                    {item.manifestations}
-                  </div>
-                  <div className="text-xs text-amber-800 dark:text-amber-300 bg-amber-50/70 dark:bg-amber-950/40 p-2.5 rounded border border-amber-200/50 dark:border-amber-800/40">
-                    <span className="font-semibold">养生调摄：</span>
-                    {item.wellnessDiet}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </section>
   );
 };

@@ -271,7 +271,7 @@ export function buildMingluArticle(options: BuildMingluOptions): MingluArticle {
       subItems: [
         {
           id: 'sub-elements-dist',
-          title: '五行分数与能量比例',
+          title: '五行结构加权分布',
           anchorId: 'bazi-elements-distribution',
           level: 2,
         },

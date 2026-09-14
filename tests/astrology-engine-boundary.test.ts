@@ -55,7 +55,16 @@ test('行运速度为零时非精确相位保持未判定', (context) => {
 });
 
 test('星历保留验证年代与古代时标差精度说明，现代日期无多余说明', () => {
-  const input = { year: 150, month: 1, day: 1, hour: 12, minute: 0, timezone: 0 };
+  const input = {
+    year: 150,
+    month: 1,
+    day: 1,
+    hour: 12,
+    minute: 0,
+    timezone: 0,
+    latitude: 39.9,
+    longitude: 116.4,
+  };
   const old = calculateChart(input);
   assert.ok(old.warnings.some((warning) => /太阳.*1000—3000/.test(warning)));
   assert.ok(old.warnings.some((warning) => /时标差.*230秒.*0.96度.*2.11角分/.test(warning)));
@@ -63,7 +72,16 @@ test('星历保留验证年代与古代时标差精度说明，现代日期无�
 });
 
 test('请求的星体超出星历数据范围时明确报错，未请求的小行星不阻断主星盘', () => {
-  const input = { year: 150, month: 1, day: 1, hour: 12, minute: 0, timezone: 0 };
+  const input = {
+    year: 150,
+    month: 1,
+    day: 1,
+    hour: 12,
+    minute: 0,
+    timezone: 0,
+    latitude: 39.9,
+    longitude: 116.4,
+  };
   assert.equal(calculateChart(input).planets.length, 10);
   for (const calculate of [calculateChart, calculatePlanets]) {
     assert.throws(() => calculate(input, { includeChiron: true }), /星历数据.*凯龙星/);
@@ -106,7 +124,16 @@ test('星历输入拒绝不存在的公历日期及越界时分秒时区', () =>
 });
 
 test('星盘底层入口拒绝无效地理坐标', () => {
-  const input = { year: 2026, month: 1, day: 1, hour: 12, minute: 0, timezone: 8 };
+  const input = {
+    year: 2026,
+    month: 1,
+    day: 1,
+    hour: 12,
+    minute: 0,
+    timezone: 8,
+    latitude: 39.9,
+    longitude: 116.4,
+  };
   for (const changed of [
     { latitude: NaN },
     { latitude: 91 },
@@ -153,7 +180,16 @@ test('显式未指定相位容许度沿用默认值并保持有限强度', () =>
 
 test('交点与真莉莉丝保留星历速度和逆行状态，南北交点运动一致', () => {
   for (const year of [1990, 2008, 2026]) {
-    const input = { year, month: 1, day: 1, hour: 12, minute: 0, timezone: 0 };
+    const input = {
+      year,
+      month: 1,
+      day: 1,
+      hour: 12,
+      minute: 0,
+      timezone: 0,
+      latitude: 39.9,
+      longitude: 116.4,
+    };
     const chart = calculateChart(input, { includeNodes: true, includeLilith: true });
     const jd = toJulianDate(input);
     for (const [point, bodyId] of [
@@ -166,6 +202,41 @@ test('交点与真莉莉丝保留星历速度和逆行状态，南北交点运�
       assert.equal(point.longitudeSpeed, reference.speed);
       assert.equal(point.isRetrograde, reference.speed < 0);
     }
+  }
+});
+
+test('仅行星位置入口允许缺坐标，完整星盘入口拒绝用默认坐标生成宫位', () => {
+  const input = { year: 2026, month: 1, day: 1, hour: 12, minute: 0, timezone: 8 };
+  const planets = calculatePlanets(input);
+  assert.equal(planets.length, 10);
+  assert.ok(planets.every((planet) => planet.house === 0));
+  assert.throws(() => calculateChart(input), /完整星盘计算必须同时提供出生地纬度和经度/);
+
+  const chart = calculateChart({ ...input, latitude: 39.9, longitude: 116.4 });
+  assert.ok(chart.planets.every((planet) => planet.house >= 1 && planet.house <= 12));
+  for (const name of ['Sun', 'Moon', 'Mercury', 'Venus', 'Mars']) {
+    assert.equal(
+      planets.find((planet) => planet.name === name)!.longitude,
+      chart.planets.find((planet) => planet.name === name)!.longitude,
+      name,
+    );
+  }
+});
+
+test('仅位置入口保留南北交点且与完整星盘的交点和莉莉丝一致', () => {
+  const input = { year: 2026, month: 1, day: 1, hour: 12, minute: 0, timezone: 8 };
+  const options = { includeNodes: true, includeLilith: true };
+  const positions = calculatePlanets(input, options);
+  const chart = calculateChart({ ...input, latitude: 39.9, longitude: 116.4 }, options);
+  assert.deepEqual(
+    positions.slice(10).map((point) => point.name),
+    ['North Node', 'South Node', 'True Lilith'],
+  );
+  for (const expected of [...chart.nodes, ...chart.lilith]) {
+    const actual = positions.find((point) => point.name === expected.name)!;
+    assert.equal(actual.longitude, expected.longitude, expected.name);
+    assert.equal(actual.longitudeSpeed, expected.longitudeSpeed, expected.name);
+    assert.equal(actual.house, 0);
   }
 });
 

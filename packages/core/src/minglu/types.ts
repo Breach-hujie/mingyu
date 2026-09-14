@@ -263,6 +263,8 @@ export interface MingluInteractionItem {
   involvedStemsBranches: string[];
   transformElement?: string;
   nature: '吉' | '凶' | '中性';
+  conditionStatus?: string;
+  conditionEvidence?: string[];
   description: string;
   influence: string;
   anchorId: string;
@@ -380,7 +382,7 @@ export interface MingluLuckCycleItem {
   interactionWithNatal: string[];
   lifeTheme: string;
   careerAdvice: string;
-  healthAdvice: string;
+  healthAdvice?: string;
   annualYears: MingluAnnualYearItem[];
 }
 

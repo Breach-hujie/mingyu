@@ -371,7 +371,10 @@ export function determinePattern(
   }
 
   const finalPatternName = patternName || '杂气格';
-  const fulfillment = evaluatePatternFulfillment(pillars, dayMaster, finalPatternName, getTenGod);
+  const fulfillment = evaluatePatternFulfillment(pillars, dayMaster, finalPatternName, getTenGod, {
+    strengthStatus,
+    monthCommander,
+  });
 
   return {
     pattern: finalPatternName,

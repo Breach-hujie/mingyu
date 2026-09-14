@@ -1,6 +1,25 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { evaluateTaiyiTacticGuidance, generateTaiyi } from '../packages/core/src/taiyi/index.ts';
+import {
+  evaluateTaiyiConditions,
+  evaluateTaiyiTacticGuidance,
+  generateTaiyi,
+} from '../packages/core/src/taiyi/index.ts';
+import { formatTaiyiInfo } from '../packages/core/src/prompt/divination-enhanced.ts';
+
+test('太乙在线任务书保留三门、将目与阴阳配对的实际依据', () => {
+  const result = generateTaiyi({ year: 2004, scope: 'year' });
+  const text = formatTaiyiInfo(result);
+  assert.match(text, /三门取法：按太乙、文昌（主目）判主门具/);
+  assert.match(text, /门位事实：始击（客目）.*客目门位另列/);
+  assert.equal((text.match(/阴阳配对：/g) ?? []).length, 4);
+  assert.ok(text.includes(`算${result.lordCount}为`));
+  assert.ok(text.includes(`算${result.guestCount}为`));
+  assert.match(text, /二目五行：.*日计纳音另论/);
+  assert.doesNotMatch(text, /taiyi:|usedFor|complete:|step\.key|三门三门/);
+  const legacy = formatTaiyiInfo({ ...result, tacticGuidance: '' });
+  assert.doesNotMatch(legacy, /利主不利客|利客不利主/);
+});
 
 type TaiyiTruthRow = readonly [
   year: number,
@@ -263,6 +282,7 @@ test('太乙长短算按十一分界，和算结合门将审断', () => {
   assert.match(guidance, /主算10，为短算，传统取急而浅为/);
   assert.match(guidance, /客算11（阴中重阳），为长算，传统取缓而深入/);
   assert.match(guidance, /三门具否、五将发否、阴阳和否/);
+  assert.match(guidance, /当前未传入三门、五将、阴阳和盘面事实，不能据长短单独断胜负/);
   assert.match(guidance, /吉凶条件相等时/);
   const harmony = evaluateTaiyiTacticGuidance({
     lordCount: 12,
@@ -275,6 +295,149 @@ test('太乙长短算按十一分界，和算结合门将审断', () => {
   assert.doesNotMatch(harmony, /调停|和解|不战屈人/);
   const result = generateTaiyi({ year: 2026 });
   assert.ok(result.prompt.includes(result.tacticGuidance));
+  assert.match(result.tacticGuidance, /盘面条件：(?:三门具|两门不具|三门不具)/);
+  assert.match(result.prompt, /门将阴阳和：(?:三门具|两门不具|三门不具)/);
+  assert.doesNotMatch(result.evidenceAnalysis.promptText, /taiyi:calculation:/);
+  assert.equal(
+    result.evidenceAnalysis.calculationSteps[4]?.result,
+    result.conditions.threeGates.status,
+  );
+  assert.equal(
+    result.evidenceAnalysis.calculationSteps[5]?.result,
+    result.conditions.fiveGenerals.launched ? '发' : '不发',
+  );
+  assert.equal(
+    result.evidenceAnalysis.calculationSteps[6]?.result,
+    result.conditions.yinYangHarmony.matched ? '和' : '不和',
+  );
+});
+
+test('太乙三门直使按二百四十周期每三十换门，并保留可复算条件', () => {
+  const base = {
+    taiyiPosition: '乾',
+    taiyiPalace: 1,
+    wenChangPosition: '子',
+    wenChangPalace: 8,
+    shiJiPosition: '艮',
+    shiJiPalace: 3,
+    lordCount: 2,
+    guestCount: 3,
+    lordGeneral: 2,
+    lordAssistant: 6,
+    guestGeneral: 3,
+    guestAssistant: 9,
+  } as const;
+  const first = generateTaiyi({ year: 2026 });
+  assert.equal(
+    first.conditions.threeGates.gateByPalace[first.taiyiPalace],
+    first.conditions.threeGates.directGate,
+  );
+  assert.equal(typeof first.conditions.fiveGenerals.launched, 'boolean');
+
+  const directOpen = evaluateTaiyiConditions({
+    ...base,
+    accumulatedValue: 1,
+  });
+  const directRest = evaluateTaiyiConditions({
+    ...base,
+    accumulatedValue: 30,
+  });
+  assert.equal(directOpen.threeGates.directGate, '开门');
+  assert.equal(directRest.threeGates.directGate, '休门');
+  assert.equal(directOpen.threeGates.directGateRemainder, 1);
+  assert.equal(directRest.threeGates.directGateRemainder, 30);
+  assert.equal(directOpen.threeGates.gateByPalace[1], '开门');
+  assert.equal(directRest.threeGates.gateByPalace[1], '休门');
+  assert.equal(directOpen.threeGates.gateByPalace[8], '休门');
+  assert.equal(directRest.threeGates.gateByPalace[8], '生门');
+});
+
+test('太乙三门具只按太乙与文昌主目判定，始击门位单列', () => {
+  const conditions = evaluateTaiyiConditions({
+    accumulatedValue: 121,
+    taiyiPosition: '乾',
+    taiyiPalace: 1,
+    wenChangPosition: '子',
+    wenChangPalace: 8,
+    shiJiPosition: '辰',
+    shiJiPalace: 9,
+    lordCount: 2,
+    guestCount: 3,
+    lordGeneral: 2,
+    lordAssistant: 6,
+    guestGeneral: 3,
+    guestAssistant: 9,
+  });
+  assert.equal(conditions.threeGates.directGate, '杜门');
+  assert.equal(conditions.threeGates.status, '三门具');
+  assert.deepEqual(conditions.threeGates.blockedRoles, []);
+  assert.equal(conditions.threeGates.gateScope, '太乙、文昌（主目）');
+  assert.equal(conditions.threeGates.roles[0]?.gate, '杜门');
+  assert.equal(conditions.threeGates.roles[1]?.gate, '景门');
+  assert.equal(conditions.threeGates.roles[2]?.gate, '开门');
+  assert.equal(conditions.threeGates.roles[2]?.usedForThreeGate, false);
+});
+
+test('太乙二目五行关系单列，不冒充五将发不发条件', () => {
+  const base = {
+    accumulatedValue: 1,
+    taiyiPosition: '乾',
+    taiyiPalace: 1,
+    lordCount: 2,
+    guestCount: 3,
+    lordGeneral: 2,
+    lordAssistant: 6,
+    guestGeneral: 3,
+    guestAssistant: 9,
+  } as const;
+  const guestControlsHost = evaluateTaiyiConditions({
+    ...base,
+    wenChangPosition: '卯',
+    wenChangPalace: 4,
+    shiJiPosition: '酉',
+    shiJiPalace: 6,
+  });
+  assert.equal(guestControlsHost.fiveGenerals.hostGuestElementRelation.relation, '客关主');
+  assert.equal(guestControlsHost.fiveGenerals.hostGuestElementRelation.complete, false);
+  assert.equal(
+    guestControlsHost.fiveGenerals.hostGuestElementRelation.usedForFiveGeneralsLaunch,
+    false,
+  );
+
+  const hostControlsGuest = evaluateTaiyiConditions({
+    ...base,
+    wenChangPosition: '戌',
+    wenChangPalace: 1,
+    shiJiPosition: '子',
+    shiJiPalace: 8,
+  });
+  assert.equal(hostControlsGuest.fiveGenerals.hostGuestElementRelation.relation, '主关客');
+  assert.equal(hostControlsGuest.fiveGenerals.hostGuestElementRelation.complete, false);
+});
+
+test('太乙五将同入中宫仍计主客同宫关，不因中宫不参与邻对关系而漏判', () => {
+  const conditions = evaluateTaiyiConditions({
+    accumulatedValue: 1,
+    taiyiPosition: '乾',
+    taiyiPalace: 1,
+    wenChangPosition: '子',
+    wenChangPalace: 8,
+    shiJiPosition: '艮',
+    shiJiPalace: 3,
+    lordCount: 2,
+    guestCount: 3,
+    lordGeneral: 5,
+    lordAssistant: 2,
+    guestGeneral: 5,
+    guestAssistant: 3,
+  });
+  assert.equal(conditions.fiveGenerals.hostGuestNoSamePalaceRelation, false);
+  assert.equal(conditions.fiveGenerals.launched, false);
+  assert.ok(
+    conditions.fiveGenerals.relations.some(
+      (item) => item.kind === '主客同宫关' && item.leftPalace === 5 && item.rightPalace === 5,
+    ),
+  );
 });
 
 test('太乙积时在公元九十九年与一百年交接连续', () => {

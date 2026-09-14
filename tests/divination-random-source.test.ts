@@ -9,7 +9,14 @@ import {
   getCardEvidence,
   tarotCards,
 } from '../packages/core/src/divination/tarot.ts';
-import { drawRandomSign } from '../packages/core/src/divination/algorithms/ssgw.ts';
+import {
+  drawRandomSign,
+  resolveSignByNumber,
+} from '../packages/core/src/divination/algorithms/ssgw.ts';
+import {
+  drawLenormandSpread,
+  resolveInteractiveLenormandCards,
+} from '../packages/core/src/divination/algorithms/lenormand.ts';
 import { generateMeihua } from '../packages/core/src/divination/algorithms/meihua/index.ts';
 import { generateLiuyao } from '../packages/core/src/divination/algorithms/liuyao.ts';
 import { TimeManager } from '../packages/core/src/calendar/timeManager.ts';
@@ -25,6 +32,33 @@ import {
 
 const SEED = 'fixed-random-source';
 const DATE = new Date('2025-01-01T08:00:00+08:00');
+
+test('修改本次签文或牌面不污染后续相同输入的解读资料', () => {
+  const sign = drawRandomSign(DATE, { seed: '资料隔离' });
+  const originalDetails = { ...sign.details };
+  sign.details['核心寓意'] = '本次临时备注';
+  assert.deepEqual(resolveSignByNumber(sign.number, DATE).details, originalDetails);
+  assert.deepEqual(drawRandomSign(DATE, { seed: '资料隔离' }).details, originalDetails);
+  const manual = resolveSignByNumber(sign.number, DATE);
+  manual.details['核心寓意'] = '手工备注';
+  assert.deepEqual(resolveSignByNumber(sign.number, DATE).details, originalDetails);
+
+  const spread = drawSpreadCards('single', { seed: '资料隔离' });
+  const originalName = spread.cards[0].card.name;
+  spread.cards[0].card.name = '本次备注';
+  assert.equal(drawSpreadCards('single', { seed: '资料隔离' }).cards[0].card.name, originalName);
+
+  const cards = resolveInteractiveLenormandCards('single', [0]);
+  const keywords = [...cards[0].keywords];
+  cards[0].keywords.push('本次备注');
+  assert.deepEqual(resolveInteractiveLenormandCards('single', [0])[0].keywords, keywords);
+  const reading = drawLenormandSpread('single', { manualCardIds: [1] });
+  reading.cards[0].keywords.push('本次备注');
+  assert.deepEqual(
+    drawLenormandSpread('single', { manualCardIds: [1] }).cards[0].keywords,
+    keywords,
+  );
+});
 
 test('随机轨迹固定创建时种子，调用者修改选项或轨迹副本不改变重放依据', () => {
   const options = { seed: '原始种子' };

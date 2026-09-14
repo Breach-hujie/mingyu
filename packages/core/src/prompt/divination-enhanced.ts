@@ -1060,15 +1060,36 @@ export function formatTaiyiInfo(data: TaiyiResult) {
   const sixteenGods = data.sixteenGods?.length
     ? `十六神：${data.sixteenGods.map((item) => `${item.branch}${item.god}`).join('、')}`
     : '';
+  const conditions = data.conditions;
+  const conditionLines = conditions
+    ? [
+        `三门取法：按${conditions.threeGates.gateScope}判主门具；直使${conditions.threeGates.directGate}，二百四十周期余数${conditions.threeGates.directGateRemainder}；${conditions.threeGates.status}`,
+        ...conditions.threeGates.roles.map(
+          (item) =>
+            `门位事实：${item.role}在${item.position}第${item.palace}宫，${item.gate ?? '中宫无八门'}；${item.usedForThreeGate ? '参与主门具判断' : '客目门位另列'}`,
+        ),
+        `五将条件：始击${conditions.fiveGenerals.shiJiNoCoverOrHit ? '无掩击' : '有掩击'}；文昌${conditions.fiveGenerals.wenChangNoImprisonOrPressure ? '无囚迫' : '有囚迫'}；主客四将${conditions.fiveGenerals.hostGuestNoSamePalaceRelation ? '无同宫关' : '有同宫关'}；五将${conditions.fiveGenerals.launched ? '发' : '不发'}`,
+        ...conditions.fiveGenerals.relations.map(
+          (item) =>
+            `将目关系：${item.left}第${item.leftPalace}宫与${item.right}第${item.rightPalace}宫，${item.kind}（${item.relation}）`,
+        ),
+        `二目五行：文昌${conditions.fiveGenerals.hostGuestElementRelation.hostPosition}属${conditions.fiveGenerals.hostGuestElementRelation.hostElement ?? '待核'}，始击${conditions.fiveGenerals.hostGuestElementRelation.guestPosition}属${conditions.fiveGenerals.hostGuestElementRelation.guestElement ?? '待核'}，${conditions.fiveGenerals.hostGuestElementRelation.relation}；此为二目所在十六神五行关系，日计纳音另论`,
+        ...conditions.yinYangHarmony.pairFacts.map(
+          (item) =>
+            `阴阳配对：${item.role}，${item.position ?? `第${item.palace}宫`}为${item.polarity}，算${item.count}为${item.countPolarity}；${item.matched ? '阴阳和' : '阴阳不和'}`,
+        ),
+      ]
+    : [];
   return [
     `占法：太乙神数（${scopeLabel}）`,
     `起局时间：${data.dateTime}；本计干支：${data.ganZhi}；${data.yinYang}第${data.bureau}局`,
     `太乙：${data.taiyiPosition}（第${data.taiyiPalace}宫，${data.taiyiGua}卦，${data.taiyiDir}）`,
     `文昌（主目）：${data.wenChangPosition}；始击（客目）：${data.shiJiPosition}；计神：${data.jiShenPosition}`,
     `主客定算：主算${data.lordCount}；客算${data.guestCount}；定算${data.setCount}`,
-    `大局攻守：${data.tacticGuidance || (data.lordCount > data.guestCount ? '主算多于客算，利主不利客，守静固本为宜' : data.guestCount > data.lordCount ? '客算多于主算，利客不利主，动谋求变有利' : '主客均势，相持待机')}`,
+    `大局攻守：${data.tacticGuidance || '主客算长短结合三门、五将和阴阳配合条件判断，条件相等时再比较长短'}`,
     `将参：主大${data.lordGeneral}、主参${data.lordAssistant}；客大${data.guestGeneral}、客参${data.guestAssistant}；定大${data.setGeneral}、定参${data.setAssistant}`,
     sixteenGods,
+    ...conditionLines,
     specialJudgments.length ? `判断：${specialJudgments.join('；')}` : '',
   ]
     .filter(Boolean)
