@@ -266,12 +266,12 @@ export function resolveInteractiveLenormandCards(
     const index = Math.floor(sample * remaining.length);
     const card = remaining.splice(index, 1)[0];
     if (!card) throw new Error(`第${remaining.length + 1}张雷诺曼抽牌无法映射到剩余牌组`);
-    return card;
+    return { ...card, keywords: [...card.keywords] };
   });
 }
 
 export function shuffleLenormandCards(rng: RandomSource) {
-  const shuffled = [...LENORMAND_CARDS];
+  const shuffled = LENORMAND_CARDS.map((card) => ({ ...card, keywords: [...card.keywords] }));
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = randomInt(i + 1, rng);
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
@@ -525,6 +525,7 @@ export function drawLenormandSpread(
     }
     return {
       ...card,
+      keywords: [...card.keywords],
       position: spread.positions[index],
       house: houseCard?.name,
       row: columns ? Math.floor(index / columns) + 1 : undefined,

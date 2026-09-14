@@ -5,6 +5,12 @@ import { baziCalculator } from '../packages/core/src/bazi/baziCalculator.ts';
 import { buildMingluArticle, formsPairRelation } from '../packages/core/src/minglu/index.ts';
 import { MINGLU_GLOSSARY_DATABASE } from '../packages/core/src/minglu/glossary-data.ts';
 import { getBaZhaiPalace } from '../packages/core/src/direction/index.ts';
+import {
+  buildBeginnerGuide,
+  buildEnhancedFiveElementsSection,
+  buildEnhancedInteractions,
+  buildEnhancedTenGodsSection,
+} from '../packages/core/src/minglu/bazi-enhancer.ts';
 
 test('命录应正确生成全息百科大报告与所有补齐计算', () => {
   const person = {
@@ -69,8 +75,17 @@ test('命录应正确生成全息百科大报告与所有补齐计算', () => {
   assert.ok(article.fiveElementsSection.dayMasterStrength.score >= 0);
   assert.ok(article.fiveElementsSection.dayMasterStrength.sameRatio >= 0);
   assert.ok(article.fiveElementsSection.dayMasterStrength.diffRatio >= 0);
-  assert.ok(article.fiveElementsSection.healthTcmAdvice);
-  assert.equal(article.fiveElementsSection.healthTcmAdvice.length, 5);
+  assert.equal(article.fiveElementsSection.healthTcmAdvice, undefined);
+  assert.deepEqual(
+    article.fiveElementsSection.elements.map(({ wuxing, count }) => [wuxing, count]),
+    [
+      ['木', 0],
+      ['火', 3],
+      ['土', 1],
+      ['金', 4],
+      ['水', 0],
+    ],
+  );
 
   // 5. 格局与用神
   assert.ok(article.patternUsefulGodSection.pattern.name);
@@ -96,7 +111,12 @@ test('命录应正确生成全息百科大报告与所有补齐计算', () => {
   const firstCycle = article.luckChronicleSection.cycles[0];
   assert.ok(firstCycle.lifeTheme);
   assert.ok(firstCycle.careerAdvice);
-  assert.ok(firstCycle.healthAdvice);
+  assert.equal(firstCycle.healthAdvice, undefined);
+  assert.ok(
+    article.luckChronicleSection.cycles.every(
+      (cycle) => !/财富丰隆|德高望重/.test(cycle.lifeTheme),
+    ),
+  );
   assert.ok(firstCycle.annualYears.length > 0);
 
   const firstYear = firstCycle.annualYears[0];
@@ -145,6 +165,49 @@ test('命录岁运并临不应同时误判天地合或天克地冲，冲合判�
     }
   }
   assert.ok(sawBinglin, '十二年大运流年表中应至少出现一次岁运并临');
+});
+
+test('岁运天克地冲包含戊壬己癸的土水相克，关系标签保留条件', () => {
+  const clashes: Record<string, string> = {
+    子: '午',
+    丑: '未',
+    寅: '申',
+    卯: '酉',
+    辰: '戌',
+    巳: '亥',
+    午: '子',
+    未: '丑',
+    申: '寅',
+    酉: '卯',
+    戌: '辰',
+    亥: '巳',
+  };
+  const earthWater = new Set(['戊壬', '壬戊', '己癸', '癸己']);
+  let checked = 0;
+  for (const gender of ['male', 'female'] as const) {
+    const baziResult = baziCalculator.calculateBazi({
+      year: 1990,
+      month: 5,
+      day: 15,
+      timeIndex: 5,
+      gender,
+    });
+    const article = buildMingluArticle({ person: { name: '结构核验', gender }, baziResult });
+    for (const cycle of article.luckChronicleSection.cycles) {
+      for (const year of cycle.annualYears) {
+        const events = year.specialEvents.join('；');
+        if (
+          earthWater.has(cycle.ganZhi[0] + year.ganZhi[0]) &&
+          clashes[cycle.ganZhi[1]] === year.ganZhi[1]
+        ) {
+          checked += 1;
+          assert.match(events, /岁运天克地冲/);
+        }
+        assert.doesNotMatch(events, /诸事和顺|良缘相聚|蜕变契机|【枭神夺食】/);
+      }
+    }
+  }
+  assert.ok(checked > 0, '真实岁运样本须覆盖土水相克且地支相冲');
 });
 
 test('命录命卦方位应与公共八宅大游年表逐卦一致', () => {
@@ -233,4 +296,74 @@ test('岁运合冲判定穷举：十干100组、地支144组正反向与同字',
     }
   }
   assert.equal(checked, 144);
+});
+
+test('命录保留中和与实际取用，印星及透干比劫分别取证', () => {
+  const chart = baziCalculator.calculateBazi({
+    year: 1990,
+    month: 1,
+    day: 4,
+    timeIndex: 5,
+    gender: 'male',
+  });
+  assert.equal(chart.analysis.dayMasterStrength.status, '中和');
+  const guide = buildBeginnerGuide(chart);
+  assert.match(guide.strengthPlain, /日主中和/);
+  assert.ok(guide.strengthPlain.includes(chart.analysis.usefulGod.primaryUseful!));
+  assert.doesNotMatch(guide.strengthPlain, /日主偏弱|印比为喜用/);
+  const tenGods = buildEnhancedTenGodsSection(chart);
+  assert.equal(tenGods.godsList.find((god) => god.tenGod === '正官')!.count, 0);
+  assert.equal(tenGods.godsList.find((god) => god.tenGod === '七杀')!.count, 0);
+  assert.ok(tenGods.flowAnalysis.channels.length > 0);
+  assert.equal(
+    tenGods.flowAnalysis.channels.some(
+      (channel) => channel.from === '官杀' || channel.to === '官杀',
+    ),
+    false,
+  );
+
+  // 甲寅、丙寅、甲寅、丙寅：仅甲丙戊，透干有比肩而全盘无水印。
+  const noResource = {
+    ...chart,
+    dayMaster: { ...chart.dayMaster, gan: '甲', element: '木' as const },
+    pillars: {
+      year: { gan: '甲', zhi: '寅', ganZhi: '甲寅' },
+      month: { gan: '丙', zhi: '寅', ganZhi: '丙寅' },
+      day: { gan: '甲', zhi: '寅', ganZhi: '甲寅' },
+      hour: { gan: '丙', zhi: '寅', ganZhi: '丙寅' },
+    },
+  };
+  const companion = buildEnhancedFiveElementsSection(noResource);
+  assert.equal(companion.dayMasterStrength.dimensions.assisted, true);
+  assert.equal(companion.dayMasterStrength.dimensions.supported, false);
+  // 己日明干丙辛辛均非比劫，保留原局巳火印；二者不能共用hasSupport。
+  const noCompanion = {
+    ...chart,
+    pillars: {
+      ...chart.pillars,
+      year: { gan: '丙', zhi: '午', ganZhi: '丙午' },
+      month: { gan: '辛', zhi: '巳', ganZhi: '辛巳' },
+      hour: { gan: '辛', zhi: '巳', ganZhi: '辛巳' },
+    },
+  };
+  const resource = buildEnhancedFiveElementsSection(noCompanion);
+  assert.equal(resource.dayMasterStrength.dimensions.supported, true);
+  assert.equal(resource.dayMasterStrength.dimensions.assisted, false);
+  const competing = {
+    ...noResource,
+    pillars: {
+      year: { gan: '甲', zhi: '寅', ganZhi: '甲寅' },
+      month: { gan: '己', zhi: '巳', ganZhi: '己巳' },
+      day: { gan: '甲', zhi: '午', ganZhi: '甲午' },
+      hour: { gan: '庚', zhi: '午', ganZhi: '庚午' },
+    },
+  };
+  const harmony = buildEnhancedInteractions(competing).filter(
+    (item) => item.category === '天干五合',
+  );
+  assert.equal(harmony.length, 2);
+  assert.ok(
+    harmony.every((item) => item.conditionEvidence?.some((evidence) => evidence.includes('争合'))),
+  );
+  assert.ok(harmony.every((item) => item.conditionStatus !== '成化' && item.nature !== '吉'));
 });

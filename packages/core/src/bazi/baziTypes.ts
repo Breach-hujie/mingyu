@@ -10,6 +10,7 @@ import type { SolarTermEvidence } from '../calendar/solar-term-evidence';
 import type { TrueSolarTimeEvidenceFields } from '../calendar/true-solar-time';
 import { WUXING } from '../wuxing';
 import type { Wuxing } from '../wuxing';
+import type { PatternFulfillmentResult } from './baziPatternFulfillment';
 
 export { WUXING };
 export type { Wuxing };
@@ -306,22 +307,7 @@ export interface PatternAnalysis {
   /** 魁罡日（日柱庚辰/壬辰/戊戌/庚戌为外格，《三命通会》） */
   isKuiGang?: boolean;
   /** 格局候选关系、制化路径与成败待核条件。 */
-  fulfillment?: {
-    patternName: string;
-    status: '成格' | '破格' | '破而复成' | '平常' | '未判定';
-    basis: string;
-    contradiction: string;
-    remedies: Array<{
-      stem: string;
-      pillar: 'year' | 'month' | 'day' | 'hour';
-      tenGod: string;
-      effect: string;
-      placement?: '透干' | '藏干';
-    }>;
-    summary: string;
-    evidence?: string[];
-    conditions?: string[];
-  };
+  fulfillment?: PatternFulfillmentResult;
 }
 
 export interface UsefulGodAnalysis {

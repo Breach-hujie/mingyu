@@ -1,5 +1,12 @@
 /* 命录 (Minglu Wiki) 专属样式 */
+.result-tab-stage:has(.minglu-wiki-wrapper) {
+  width: 100%;
+}
+
 .minglu-wiki-wrapper {
+  container: minglu / inline-size;
+  width: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   min-height: 100vh;
@@ -225,7 +232,7 @@
   border: 1px solid #e2e8f0;
   border-radius: 1rem;
   padding: 1.75rem;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
 }
 
 .minglu-section-header {
@@ -287,9 +294,15 @@
   gap: 1rem;
 }
 
-.minglu-card-grid-2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
-.minglu-card-grid-3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
-.minglu-card-grid-4 { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.minglu-card-grid-2 {
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+.minglu-card-grid-3 {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.minglu-card-grid-4 {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
 
 .minglu-card {
   background: #f8fafc;
@@ -341,10 +354,22 @@
   color: #334155;
 }
 
-.minglu-pill.is-primary { background: #fef3c7; color: #92400e; }
-.minglu-pill.is-green { background: #dcfce7; color: #166534; }
-.minglu-pill.is-red { background: #fee2e2; color: #991b1b; }
-.minglu-pill.is-gray { background: #f1f5f9; color: #64748b; }
+.minglu-pill.is-primary {
+  background: #fef3c7;
+  color: #92400e;
+}
+.minglu-pill.is-green {
+  background: #dcfce7;
+  color: #166534;
+}
+.minglu-pill.is-red {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.minglu-pill.is-gray {
+  background: #f1f5f9;
+  color: #64748b;
+}
 
 /* 链接 Wiki 样式 */
 .minglu-wiki-link {
@@ -369,8 +394,12 @@
 
 /* 锚点跳转高亮动画 */
 @keyframes minglu-flash {
-  0% { background-color: rgba(245, 158, 11, 0.4); }
-  100% { background-color: transparent; }
+  0% {
+    background-color: rgba(245, 158, 11, 0.4);
+  }
+  100% {
+    background-color: transparent;
+  }
 }
 
 .minglu-anchor-flash {
@@ -419,7 +448,8 @@
   text-align: center;
 }
 
-.minglu-table th, .minglu-table td {
+.minglu-table th,
+.minglu-table td {
   padding: 0.65rem 0.75rem;
   border: 1px solid #e2e8f0;
 }
@@ -1456,20 +1486,33 @@
 }
 
 /* 响应式与打印 */
-@media (max-width: 980px) {
+@container minglu (max-width: 980px) {
+  .minglu-wiki-toolbar {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+  }
+  .minglu-toolbar-left {
+    min-width: 0;
+  }
+  .minglu-toolbar-actions {
+    flex-wrap: wrap;
+  }
+  .minglu-toolbar-btn,
+  .minglu-mobile-toc-toggle {
+    white-space: nowrap;
+  }
   .minglu-wiki-body {
     flex-direction: column;
     padding: 1rem;
   }
   .minglu-wiki-sidebar {
     display: none;
-    position: fixed;
+    position: sticky;
     top: 4rem;
-    left: 1rem;
-    right: 1rem;
-    bottom: 1rem;
-    width: auto;
+    width: 100%;
     height: auto;
+    max-height: calc(100dvh - 8rem);
     z-index: 50;
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
   }
@@ -1501,4 +1544,3 @@
     border: 1px solid #ccc;
   }
 }
-

@@ -17,6 +17,7 @@ import {
   type BodyId,
   type ChartBody as CaelusChartBody,
   type EngineData,
+  type Position as CaelusPosition,
 } from 'caelus';
 import { embeddedData } from './vendor/caelus/embedded-data.js';
 import {
@@ -142,6 +143,7 @@ const BODY_IDS: Record<string, BodyId> = {
   Neptune: 'neptune',
   Pluto: 'pluto',
   'North Node': 'true_node',
+  'True Lilith': 'true_lilith',
   Chiron: 'chiron',
   Ceres: 'ceres',
   Pallas: 'pallas',
@@ -209,6 +211,7 @@ export interface ChartPlanet {
   minute: number;
   second: number;
   formatted: string;
+  /** 1-12 为已按宫头定位的宫位；0 表示本次只计算位置，未计算宫位。 */
   house: number;
 }
 
@@ -300,6 +303,29 @@ function toUtc(input: BirthData): Date {
   );
 }
 
+function validateOptionalCoordinates(input: BirthData): void {
+  if (
+    input.latitude !== undefined &&
+    (!Number.isFinite(input.latitude) || Math.abs(input.latitude) > 90)
+  ) {
+    throw new Error('星盘纬度必须在-90至90度之间。');
+  }
+  if (
+    input.longitude !== undefined &&
+    (!Number.isFinite(input.longitude) || Math.abs(input.longitude) > 180)
+  ) {
+    throw new Error('星盘经度必须在-180至180度之间。');
+  }
+}
+
+function requireChartCoordinates(input: BirthData): { latitude: number; longitude: number } {
+  validateOptionalCoordinates(input);
+  if (input.latitude === undefined || input.longitude === undefined) {
+    throw new Error('完整星盘计算必须同时提供出生地纬度和经度。');
+  }
+  return { latitude: input.latitude, longitude: input.longitude };
+}
+
 export function toJulianDate(input: BirthData): number {
   return toUtc(input).getTime() / 86_400_000 + 2_440_587.5;
 }
@@ -343,6 +369,18 @@ function mapBody(name: string, body: CaelusChartBody): ChartPlanet {
     longitudeSpeed: body.speed,
     isRetrograde: body.retrograde,
     house: body.house,
+  };
+}
+
+function mapPosition(name: string, body: CaelusPosition): ChartPlanet {
+  return {
+    name,
+    ...positionFields(body.lon),
+    latitude: body.lat,
+    distance: body.dist ?? 0,
+    longitudeSpeed: body.speed,
+    isRetrograde: body.retrograde,
+    house: 0,
   };
 }
 
@@ -485,6 +523,68 @@ function findPatternsFromBodies(bodies: AspectBody[]): AspectPattern[] {
   });
 }
 
+type BodySelectionOptions = {
+  includeAsteroids?: boolean;
+  includeChiron?: boolean;
+  includeLilith?: boolean | 'true';
+  includeNodes?: boolean | 'true';
+};
+
+function getMainBodyNames(options: BodySelectionOptions): string[] {
+  return [
+    'Sun',
+    'Moon',
+    'Mercury',
+    'Venus',
+    'Mars',
+    'Jupiter',
+    'Saturn',
+    'Uranus',
+    'Neptune',
+    'Pluto',
+    ...(options.includeChiron ? ['Chiron'] : []),
+    ...(options.includeAsteroids ? ['Ceres', 'Pallas', 'Juno', 'Vesta'] : []),
+  ];
+}
+
+function getRequestedBodyNames(options: BodySelectionOptions): string[] {
+  return [
+    ...getMainBodyNames(options),
+    ...(options.includeNodes ? ['North Node'] : []),
+    ...(options.includeLilith ? ['True Lilith'] : []),
+  ];
+}
+
+function calculatePositionOnlyBodies(jd: number, names: string[]): ChartPlanet[] {
+  const positions: ChartPlanet[] = [];
+  const missingNames: string[] = [];
+  for (const name of names) {
+    try {
+      const position = mapPosition(name, astrologyEngine.position(BODY_IDS[name], jd));
+      positions.push(position);
+      if (name === 'North Node') {
+        positions.push({
+          ...position,
+          name: 'South Node',
+          ...positionFields(position.longitude + 180),
+        });
+      }
+    } catch (error) {
+      if (error instanceof RangeError) {
+        missingNames.push(name);
+        continue;
+      }
+      throw error;
+    }
+  }
+  if (missingNames.length > 0) {
+    throw new RangeError(
+      `当前日期的星历数据无法提供：${missingNames.map((name) => BODY_LABELS[name] ?? name).join('、')}。`,
+    );
+  }
+  return positions;
+}
+
 function calculateDistributions(planets: ChartPlanet[]) {
   const elements = {
     fire: [] as string[],
@@ -506,6 +606,9 @@ function calculateDistributions(planets: ChartPlanet[]) {
   return { elements, modalities };
 }
 
+/**
+ * 计算完整本命星盘。宫位、四轴和福点/精神点均依赖出生地，因此纬度与经度必须同时提供。
+ */
 export function calculateChart(
   input: BirthData,
   options: {
@@ -520,18 +623,7 @@ export function calculateChart(
   } = {},
 ) {
   const utc = toUtc(input);
-  if (
-    input.latitude !== undefined &&
-    (!Number.isFinite(input.latitude) || Math.abs(input.latitude) > 90)
-  ) {
-    throw new Error('星盘纬度必须在-90至90度之间。');
-  }
-  if (
-    input.longitude !== undefined &&
-    (!Number.isFinite(input.longitude) || Math.abs(input.longitude) > 180)
-  ) {
-    throw new Error('星盘经度必须在-180至180度之间。');
-  }
+  const { latitude, longitude } = requireChartCoordinates(input);
   const jd = julianDay(
     utc.getUTCFullYear(),
     utc.getUTCMonth() + 1,
@@ -543,24 +635,11 @@ export function calculateChart(
   const extraBodies: BodyId[] = [];
   if (options.includeAsteroids) extraBodies.push('ceres', 'pallas', 'juno', 'vesta');
   if (options.includeLilith) extraBodies.push('true_lilith');
-  const chart = astrologyEngine.chartAt(jd, input.latitude ?? 0, input.longitude ?? 0, {
+  const chart = astrologyEngine.chartAt(jd, latitude, longitude, {
     houseSystem: 'placidus',
     bodies: extraBodies,
   });
-  const mainNames = [
-    'Sun',
-    'Moon',
-    'Mercury',
-    'Venus',
-    'Mars',
-    'Jupiter',
-    'Saturn',
-    'Uranus',
-    'Neptune',
-    'Pluto',
-    ...(options.includeChiron ? ['Chiron'] : []),
-    ...(options.includeAsteroids ? ['Ceres', 'Pallas', 'Juno', 'Vesta'] : []),
-  ];
+  const mainNames = getMainBodyNames(options);
   const missingNames = mainNames.filter((name) => !chart.bodies[BODY_IDS[name]]);
   if (options.includeNodes && !chart.bodies.true_node) missingNames.push('North Node');
   if (options.includeLilith && !chart.bodies.true_lilith) missingNames.push('True Lilith');
@@ -607,7 +686,7 @@ export function calculateChart(
     : [];
   const chartLots = options.includeLots
     ? (() => {
-        const day = isDayChart(astrologyEngine, jd, input.latitude ?? 0, input.longitude ?? 0);
+        const day = isDayChart(astrologyEngine, jd, latitude, longitude);
         const fortune = lotFortune(
           chart.angles.asc,
           chart.bodies.sun.lon,
@@ -687,6 +766,10 @@ export function calculateChart(
   };
 }
 
+/**
+ * 只计算行星、交点与莉莉丝位置。出生地坐标可省略，返回的 house=0 表示未计算宫位；
+ * 需要宫位时应调用 calculateChart。
+ */
 export function calculatePlanets(
   input: BirthData,
   options: {
@@ -698,12 +781,17 @@ export function calculatePlanets(
     includeNodes?: boolean;
   } = {},
 ): ChartPlanet[] {
-  const chart = calculateChart(input, options);
-  return [
-    ...chart.planets,
-    ...(options.includeNodes ? chart.nodes : []),
-    ...(options.includeLilith ? chart.lilith : []),
-  ];
+  const utc = toUtc(input);
+  validateOptionalCoordinates(input);
+  const jd = julianDay(
+    utc.getUTCFullYear(),
+    utc.getUTCMonth() + 1,
+    utc.getUTCDate(),
+    utc.getUTCHours(),
+    utc.getUTCMinutes(),
+    utc.getUTCSeconds(),
+  );
+  return calculatePositionOnlyBodies(jd, getRequestedBodyNames(options));
 }
 
 export function getSunPosition(jd: number) {

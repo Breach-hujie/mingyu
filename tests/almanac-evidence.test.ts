@@ -159,7 +159,7 @@ test('择日证据应保留日课、宿曜、九星、百忌、方位神与逐�
         item.promptText.includes(item.ganzhi) &&
         item.sources.length >= 2 &&
         Array.isArray(item.participantRelationFacts) &&
-        item.limitation.includes('不证明该时辰必然成功') &&
+        item.limitation.includes('本次事项的候选条件') &&
         !('rawTabooFact' in item) &&
         !('recommends' in item) &&
         !('avoids' in item),
@@ -306,6 +306,7 @@ test('旧黄历字符串结果应生成兼容事实且不反推缺失参数', ()
   day.participantRelationFacts = undefined;
   for (const hour of day.hours ?? []) {
     hour.participantRelationFacts = undefined;
+    hour.topicMatchFacts = undefined;
   }
 
   const evidence = analyzeAlmanacEvidence(result);
@@ -425,4 +426,61 @@ test('择日公开证据不得暴露内部加分措辞', () => {
 
   assert.doesNotMatch(result.evidenceAnalysis?.promptText ?? '', /辅助加分|加\d+分|扣\d+分/);
   assert.ok(result.days.every((day) => day.highlights.every((item) => !item.includes('辅助支持'))));
+});
+
+test('婚嫁不能以成服作支持，余事勿取须约束未列事项', () => {
+  const result = generateAlmanacSelection({
+    topic: 'marriage',
+    startDate: '2026-01-11',
+    endDate: '2026-01-11',
+  });
+  const day = result.days[0];
+  assert.ok(day.recommends.includes('成服'));
+  assert.equal(
+    day.topicMatchFacts?.some((fact) => fact.status === '支持'),
+    false,
+  );
+  assert.equal(result.evidenceAnalysis?.candidates[0].status, '慎用候选');
+  assert.ok(
+    day.topicMatchFacts?.some((fact) => fact.status === '限制' && /余事勿取/.test(fact.promptText)),
+  );
+  const burial = generateAlmanacSelection({
+    topic: 'burial',
+    startDate: '2026-01-11',
+    endDate: '2026-01-11',
+  });
+  assert.ok(
+    burial.days[0].topicMatchFacts?.some(
+      (fact) => fact.status === '支持' && fact.matchedItems.includes('安葬'),
+    ),
+  );
+  assert.equal(
+    burial.days[0].topicMatchFacts?.some((fact) => /余事勿取/.test(fact.promptText)),
+    false,
+  );
+});
+
+test('时辰明确忌项进入事项限制并从应选时辰排除', () => {
+  const result = generateAlmanacSelection({
+    topic: 'travel',
+    startDate: '2026-01-11',
+    endDate: '2026-01-15',
+  });
+  const forbidden = result.days.flatMap((day) =>
+    (day.hours ?? [])
+      .filter((hour) => hour.avoids?.includes('出行'))
+      .map((hour) => ({ day, hour })),
+  );
+  assert.ok(forbidden.length > 0, '样本必须包含明确忌出行的时辰');
+  for (const { day, hour } of forbidden) {
+    assert.ok(
+      hour.topicMatchFacts?.some(
+        (fact) => fact.status === '限制' && fact.matchedItems.includes('出行'),
+      ),
+    );
+    const candidate = result.evidenceAnalysis!.candidates.find((item) => item.date === day.date)!;
+    const evidence = candidate.usableHours.find((item) => item.name === hour.name)!;
+    assert.equal(evidence, undefined, '明确忌出行的时辰不能进入可选时辰');
+  }
+  assert.ok(result.evidenceAnalysis!.candidates.some((item) => item.usableHours.length > 0));
 });

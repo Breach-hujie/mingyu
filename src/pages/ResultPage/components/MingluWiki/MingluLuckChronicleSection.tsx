@@ -126,10 +126,10 @@ export const MingluLuckChronicleSection: React.FC<Props> = ({ data }) => {
             </div>
 
             {/* 大运深度人生指引 */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm mt-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mt-3">
               <div className="bg-white/60 dark:bg-slate-900/60 p-3 rounded-lg border border-amber-100 dark:border-slate-800">
                 <div className="font-bold text-amber-900 dark:text-amber-200 mb-1 flex items-center gap-1">
-                  <span>阶段主题与人生重心</span>
+                  <span>起运年龄与干支十神</span>
                 </div>
                 <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
                   {activeCycle.lifeTheme}
@@ -137,18 +137,10 @@ export const MingluLuckChronicleSection: React.FC<Props> = ({ data }) => {
               </div>
               <div className="bg-white/60 dark:bg-slate-900/60 p-3 rounded-lg border border-amber-100 dark:border-slate-800">
                 <div className="font-bold text-emerald-900 dark:text-emerald-200 mb-1 flex items-center gap-1">
-                  <span>事业谋划与财富策略</span>
+                  <span>十神取象与本局取用</span>
                 </div>
                 <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
                   {activeCycle.careerAdvice}
-                </p>
-              </div>
-              <div className="bg-white/60 dark:bg-slate-900/60 p-3 rounded-lg border border-amber-100 dark:border-slate-800">
-                <div className="font-bold text-sky-900 dark:text-sky-200 mb-1 flex items-center gap-1">
-                  <span>身心调养与作息指引</span>
-                </div>
-                <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                  {activeCycle.healthAdvice}
                 </p>
               </div>
             </div>

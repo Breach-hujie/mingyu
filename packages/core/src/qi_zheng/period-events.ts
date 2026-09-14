@@ -2,6 +2,9 @@
  * @file 七政流曜周期事件
  * @description 在流年或流月窗口内扫描换宫、停逆与精确吊照，不以单一时刻代替整段周期。
  */
+import { getCivilDateTimeAtFixedOffset } from '../calendar/civil-time';
+import { getHistoricalTimezoneOffsetAt } from '../calendar/historical-timezone';
+
 const SIGN_BRANCHES = [
   '戌',
   '酉',
@@ -85,9 +88,11 @@ function wrap180(value: number) {
   return normalized > 180 ? normalized - 360 : normalized;
 }
 
-function formatUtc(utcMs: number, timezone: number) {
-  const shifted = new Date(utcMs + timezone * 3_600_000);
-  return `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())} ${pad(shifted.getUTCHours())}:${pad(shifted.getUTCMinutes())}`;
+function formatUtc(utcMs: number, timezone: number, timeZoneId?: string) {
+  const instant = new Date(utcMs);
+  const actualTimezone = timeZoneId ? getHistoricalTimezoneOffsetAt(instant, timeZoneId) : timezone;
+  const local = getCivilDateTimeAtFixedOffset(instant, actualTimezone);
+  return `${local.year}-${pad(local.month)}-${pad(local.day)} ${pad(local.hour)}:${pad(local.minute)}`;
 }
 
 function signIndexOf(longitude: number) {
@@ -140,11 +145,14 @@ export function scanQizhengPeriodEvents(params: {
   startUtcMs: number;
   endUtcMs: number;
   timezone: number;
+  /** 有 IANA 时区时逐个事件按该时刻的历史偏移格式化，timezone 仅保留固定偏移兼容路径。 */
+  timeZoneId?: string;
   mode: QizhengPeriodMode;
   sampleLongitudes: (utcMs: number) => QizhengLongitudeSample[];
 }): QizhengPeriodEventCollection {
-  const startDateTime = formatUtc(params.startUtcMs, params.timezone);
-  const endDateTime = formatUtc(params.endUtcMs, params.timezone);
+  const formatEventTime = (utcMs: number) => formatUtc(utcMs, params.timezone, params.timeZoneId);
+  const startDateTime = formatEventTime(params.startUtcMs);
+  const endDateTime = formatEventTime(params.endUtcMs);
   const bodies = bodiesForMode(params.mode);
   const natalTargets = params.natalStars.filter((star) =>
     params.mode === 'yearly' ? ['太阳', '太阴', '岁星(木)', '镇星(土)'].includes(star.name) : true,
@@ -199,11 +207,11 @@ export function scanQizhengPeriodEvents(params: {
           key: `ingress:${name}:${afterSign}:${Math.round(crossing)}`,
           kind: '换宫',
           utcMs: crossing,
-          dateTime: formatUtc(crossing, params.timezone),
+          dateTime: formatEventTime(crossing),
           movingStar: name,
           palace: palace?.palace,
           signBranch: palace?.signBranch ?? getQizhengSignBranch(afterSign),
-          promptText: `${formatUtc(crossing, params.timezone)} 换宫：流曜${name}换入本命${palace?.signBranch ?? getQizhengSignBranch(afterSign)}宫${palace?.palace ?? ''}`,
+          promptText: `${formatEventTime(crossing)} 换宫：流曜${name}换入本命${palace?.signBranch ?? getQizhengSignBranch(afterSign)}宫${palace?.palace ?? ''}`,
         });
       }
       const previousVelocity = velocityAt(previousUtc, name);
@@ -237,10 +245,10 @@ export function scanQizhengPeriodEvents(params: {
               key: `station:${name}:${direction}:${Math.round(crossing)}`,
               kind: '停逆',
               utcMs: crossing,
-              dateTime: formatUtc(crossing, params.timezone),
+              dateTime: formatEventTime(crossing),
               movingStar: name,
               stationDirection: direction,
-              promptText: `${formatUtc(crossing, params.timezone)} 停逆：流曜${name}${direction === '逆行' ? '由顺转逆' : '由逆转顺'}`,
+              promptText: `${formatEventTime(crossing)} 停逆：流曜${name}${direction === '逆行' ? '由顺转逆' : '由逆转顺'}`,
             });
           }
         }
@@ -269,11 +277,11 @@ export function scanQizhengPeriodEvents(params: {
               key: `aspect:${name}:${natal.name}:${aspect.type}:${Math.round(crossing)}`,
               kind: '精确吊照',
               utcMs: crossing,
-              dateTime: formatUtc(crossing, params.timezone),
+              dateTime: formatEventTime(crossing),
               movingStar: name,
               targetStar: natal.name,
               aspectType: aspect.type,
-              promptText: `${formatUtc(crossing, params.timezone)} 精确吊照：流曜${name}与本命${natal.name}成${aspect.type === '同宫' ? '合相' : aspect.type}，目标角${aspect.angle}°`,
+              promptText: `${formatEventTime(crossing)} 精确吊照：流曜${name}与本命${natal.name}成${aspect.type === '同宫' ? '合相' : aspect.type}，目标角${aspect.angle}°`,
             });
           }
         }

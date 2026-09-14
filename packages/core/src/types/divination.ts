@@ -1330,6 +1330,9 @@ export interface AlmanacHourCandidate {
   ganzhi: string;
   branch: string;
   twelveStar: string;
+  recommends?: string[];
+  avoids?: string[];
+  topicMatchFacts?: AlmanacTopicMatchFact[];
   highlights: string[];
   cautions: string[];
   participantNotes: string[];
@@ -1702,6 +1705,8 @@ export interface TaiyiResult {
   setGeneral: number;
   setAssistant: number;
   sixteenGods: { branch: string; god: string }[];
+  /** 三门、五将与阴阳和的盘面条件；只记录可复算关系，不生成成败分数。 */
+  conditions: import('../taiyi/conditions').TaiyiRuleConditions;
   judgments: string[];
   model: TaiyiModelInfo;
   evidenceAnalysis: import('../taiyi/evidence').TaiyiEvidenceAnalysis;

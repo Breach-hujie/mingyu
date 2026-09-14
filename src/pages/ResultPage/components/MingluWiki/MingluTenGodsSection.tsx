@@ -55,7 +55,8 @@ export const MingluTenGodsSection: React.FC<Props> = ({ data }) => {
 
       {/* 生克流通链 */}
       <div className="minglu-subblock">
-        <h3 className="minglu-subblock-title">十神五行生克流通链</h3>
+        <h3 className="minglu-subblock-title">十神相生关系与柱位</h3>
+        <p className="text-xs text-slate-500 mb-3">{flowAnalysis.summary}</p>
         <div className="minglu-flow-container">
           {flowAnalysis.channels.map((ch, idx) => (
             <div key={idx} className="minglu-flow-step">

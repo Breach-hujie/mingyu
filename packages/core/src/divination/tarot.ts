@@ -116,7 +116,7 @@ export function resolveInteractiveTarotCards(
 }
 
 function shuffleCards(rng: RandomSource) {
-  const shuffled = [...tarotCards];
+  const shuffled = tarotCards.map((card) => ({ ...card }));
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = randomInt(i + 1, rng);
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];

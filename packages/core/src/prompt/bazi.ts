@@ -163,9 +163,15 @@ export function formatBaziPatternConditions(result: BaziChartResult): string {
   const fulfillment = result.analysis?.mingGe?.fulfillment;
   if (!fulfillment) return '';
   return [
-    `所取格局：${fulfillment.patternName}；${fulfillment.basis}`,
+    `所取格局：${fulfillment.patternName}；当前成败判定：${fulfillment.status}；${fulfillment.basis}`,
     fulfillment.contradiction ? `相互制约：${fulfillment.contradiction}` : '',
     ...fulfillment.remedies.map((item) => `候选取用：${item.effect}`),
+    ...(fulfillment.conditionFacts ?? [])
+      .filter((item) => !item.key.startsWith('path.'))
+      .map((item) => `条件核验：${item.status}；${item.detail}`),
+    ...(fulfillment.pathEvaluations ?? []).map(
+      (item) => `制化路径：${item.label}（${item.position}）：${item.status}；${item.detail}`,
+    ),
     ...(fulfillment.conditions ?? []).map((item) => `成立条件：${item}`),
   ]
     .filter(Boolean)

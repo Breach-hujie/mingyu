@@ -156,7 +156,8 @@ for (const item of allCharacters) {
 const characterEntries = Object.entries(characterData);
 
 function charDetail(char: string): CharacterDetail | null {
-  return characterData[char] ?? null;
+  const detail = characterData[char];
+  return detail ? { ...detail } : null;
 }
 
 function normalizePinyin(value: string) {
@@ -191,7 +192,9 @@ function searchChars(filter: CharacterSearchFilter = {}) {
       continue;
     results.push(item);
   }
-  return results.slice(0, Math.min(Math.max(filter.limit ?? 50, 0), 200));
+  return results
+    .slice(0, Math.min(Math.max(filter.limit ?? 50, 0), 200))
+    .map((item) => ({ ...item }));
 }
 
 function shuliEntry(number: number) {
@@ -328,9 +331,12 @@ function analyzeNameStructure(
       surnameDetails.map((item) => item!.kangxiStrokes),
       givenDetails.map((item) => item!.kangxiStrokes),
     ),
-    namingTradition: NAMING_TRADITION,
+    namingTradition: {
+      ...NAMING_TRADITION,
+      methods: NAMING_TRADITION.methods.map((method) => ({ ...method })),
+    },
     grids,
-    sancai,
+    sancai: { ...sancai },
     sancaiEvidence,
     preferredElements: [...preferred],
     birthContext: options.birthContext ?? null,
@@ -453,6 +459,12 @@ function namingCharacterKey(char: string) {
 
 export type GenerationCharacterPosition = 'first' | 'second';
 
+function namingLimit(value: number | undefined, defaultValue: number, maximum: number): number {
+  if (value !== undefined && !Number.isSafeInteger(value))
+    throw new Error('候选数量必须为有限整数');
+  return Math.min(Math.max(value ?? defaultValue, 1), maximum);
+}
+
 export function selectNamingCharacters(input: {
   gender?: NamingGender;
   preferredElements?: Wuxing[];
@@ -462,6 +474,9 @@ export function selectNamingCharacters(input: {
   limit?: number;
 }) {
   const gender = input.gender ?? '通用';
+  if (!Object.prototype.hasOwnProperty.call(NAMING_CHARACTERS, gender))
+    throw new Error('起名性别取值无效');
+  const limit = namingLimit(input.limit, 48, 100);
   const birthContext = input.birth ? calculateNamingBirthContext(input.birth) : undefined;
   const preferredElements = input.preferredElements?.length
     ? input.preferredElements
@@ -483,7 +498,7 @@ export function selectNamingCharacters(input: {
     .filter((char) => !forbidden.has(char))
     .map((char) => charDetail(char))
     .filter((item): item is CharacterDetail => item !== null)
-    .slice(0, Math.min(Math.max(input.limit ?? 48, 1), 100));
+    .slice(0, limit);
 }
 
 export function generateChineseNames(input: {
@@ -507,7 +522,13 @@ export function generateChineseNames(input: {
   }
   const gender = input.gender ?? '通用';
   const length = input.givenNameLength ?? 2;
-  const limit = Math.min(Math.max(input.limit ?? 20, 1), 50);
+  if (length !== 1 && length !== 2) throw new Error('名字长度必须为1或2个汉字');
+  if (
+    input.generationPosition !== undefined &&
+    !['first', 'second'].includes(input.generationPosition)
+  )
+    throw new Error('辈分字位置必须为首字或末字');
+  const limit = namingLimit(input.limit, 20, 50);
   const birthContext = input.birth ? calculateNamingBirthContext(input.birth) : undefined;
   const preferredElements = input.preferredElements?.length
     ? input.preferredElements
@@ -530,7 +551,6 @@ export function generateChineseNames(input: {
     preferredElements,
     preferredCharacters: input.preferredCharacters,
     forbiddenCharacters: input.forbiddenCharacters,
-    birth: input.birth,
     limit: length === 2 ? 48 : 80,
   });
   if (!pool.length) throw new Error('当前用字条件没有可用候选字');
@@ -979,7 +999,7 @@ function analyzeNumberEnergySequence(alphanumeric: string) {
         sourceEnd: item.sourceIndex,
         name: definition.name,
         nature: definition.nature,
-        keywords: definition.keywords,
+        keywords: [...definition.keywords],
         meaning: definition.meaning,
         trigramEvidence: analyzeNumberEnergyPair(previous.digit, item.digit),
         modifiers: pendingModifiers,
@@ -993,7 +1013,7 @@ function analyzeNumberEnergySequence(alphanumeric: string) {
     name: definition.name,
     nature: definition.nature,
     count: energyPairs.filter((pair) => pair.name === definition.name).length,
-    keywords: definition.keywords,
+    keywords: [...definition.keywords],
   })).filter((item) => item.count > 0);
   const maxCount = Math.max(0, ...magneticDistribution.map((item) => item.count));
   const magneticSegments: Array<{

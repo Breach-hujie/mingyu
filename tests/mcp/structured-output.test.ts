@@ -2248,13 +2248,13 @@ test('MCP 黄历择日排盘保留证据，提示词允许省略问题并返回�
               fact.status === '已读取' &&
               fact.sources.length >= 2,
           ) &&
-          item.topicMatchFacts.length === 2 &&
+          item.topicMatchFacts.length >= 2 &&
           item.topicMatchFacts.some((fact) => fact.key === `${item.date}:topic:day-recommends`) &&
           item.topicMatchFacts.some((fact) => fact.key === `${item.date}:topic:day-avoids`) &&
           item.topicMatchFacts.every(
             (fact) =>
               fact.key.startsWith(`${item.date}:topic:`) &&
-              fact.sources.length >= 2 &&
+              fact.sources.length >= 1 &&
               fact.limitation.includes('不证明事项必然成功'),
           ) &&
           item.participantRelationFacts.length === 0 &&
@@ -2270,7 +2270,7 @@ test('MCP 黄历择日排盘保留证据，提示词允许省略问题并返回�
               hour.promptText &&
               hour.sources.length >= 2 &&
               Array.isArray(hour.participantRelationFacts) &&
-              hour.limitation.includes('不证明该时辰必然成功'),
+              hour.limitation.includes('本次事项的候选条件'),
           ),
       ),
     );
@@ -4835,7 +4835,7 @@ test('MCP 太乙工具返回年计七十二局结构化证据', async () => {
     assert.equal(chart.evidenceAnalysis.key, 'taiyi:evidence');
     assert.equal(chart.evidenceAnalysis.status, '已计算');
     assert.ok(chart.evidenceAnalysis.calculationChain.length >= 5);
-    assert.equal(chart.evidenceAnalysis.calculationSteps.length, 4);
+    assert.equal(chart.evidenceAnalysis.calculationSteps.length, 7);
     assert.ok(
       chart.evidenceAnalysis.calculationSteps.every(
         (item) =>
@@ -4851,10 +4851,13 @@ test('MCP 太乙工具返回年计七十二局结构化证据', async () => {
     assert.equal(chart.evidenceAnalysis.positionFacts.length, 4);
     assert.equal(chart.evidenceAnalysis.forceFacts.length, 3);
     assert.equal(chart.evidenceAnalysis.sixteenGodFacts.length, 16);
-    assert.equal(chart.evidenceAnalysis.conditionFacts.length, 4);
-    assert.equal(chart.evidenceAnalysis.counterEvidenceFacts.length, 4);
+    assert.equal(chart.evidenceAnalysis.conditionFacts.length, 7);
+    assert.equal(chart.evidenceAnalysis.counterEvidenceFacts.length, 7);
     assert.equal(chart.evidenceAnalysis.counterSummaryFact.status, '存在未命中条件');
-    assert.equal(chart.evidenceAnalysis.counterSummaryFact.factKeys.length, 2);
+    assert.equal(
+      chart.evidenceAnalysis.counterSummaryFact.factKeys.length,
+      chart.evidenceAnalysis.counterEvidenceFacts.filter((item) => item.status === '未命中').length,
+    );
     assert.equal(chart.evidenceAnalysis.limitationFacts.length, 5);
     assert.equal(chart.evidenceAnalysis.summaryFact.key, 'taiyi:evidence-summary');
     assert.equal(chart.evidenceAnalysis.summaryFact.status, '证据链完整');

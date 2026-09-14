@@ -94,6 +94,12 @@ test('八字输出提示词应是可复制给在线 AI 的独立任务书，不�
   assertNoEngineeringPromptText(combinedPrompt);
   const conditions = formatBaziPatternConditions(result);
   assert.ok(conditions.includes('成立条件：'));
+  assert.doesNotMatch(conditions, /(?:pattern|path)\.[a-z.-]+/);
+  assert.match(conditions, /条件核验：(?:满足|不满足|资料不足)/);
+  const strengthFact = result.analysis.mingGe.fulfillment!.conditionFacts!.find(
+    (item) => item.key === 'bazi.day-master-strength',
+  )!;
+  assert.equal(conditions.split(strengthFact.detail).length - 1, 1);
   for (const text of [
     combinedPrompt,
     buildBaziPrompt({ result, topic: 'career', fortuneScope: 'natal' }),

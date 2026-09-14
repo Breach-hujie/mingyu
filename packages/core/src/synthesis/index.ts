@@ -13,6 +13,10 @@ import {
   type BaziZiweiCorroborationResult,
   type ShaYaoCorroborationResult,
   type GuiRenCorroborationResult,
+  type BaziBranchEvidence,
+  type ZiweiStarEvidence,
+  type CorroborationCondition,
+  type CorroborationConditionStatus,
 } from './corroboration';
 
 export {
@@ -22,6 +26,10 @@ export {
   type BaziZiweiCorroborationResult,
   type ShaYaoCorroborationResult,
   type GuiRenCorroborationResult,
+  type BaziBranchEvidence,
+  type ZiweiStarEvidence,
+  type CorroborationCondition,
+  type CorroborationConditionStatus,
 };
 
 export type BaziZiweiSynthesisThemeId =

@@ -25,6 +25,13 @@ import {
 import { getLifeStage } from '../bazi/baziValues';
 import { calculateKongWangBranches } from '../bazi/kongWang';
 import { tallyWuxing } from '../wuxing';
+import { isKe } from '../ganzhi';
+import { TEN_GODS_DEFINITIONS } from '../bazi/baziElementData';
+import { assessAllHarmonyTransforms } from '../bazi/harmonyTransform';
+import {
+  collectCompleteBranchFormations,
+  collectEstablishedBranchFormations,
+} from '../bazi/baziFormationUtils';
 import { getBaZhaiPalace, type BaZhaiLabel } from '../direction';
 import type {
   MingluAnnualYearItem,
@@ -653,18 +660,12 @@ export function buildEnhancedFiveElementsSection(
   const rawCounts = tallyWuxing(items, { weightHidden: true });
   const wuxingList: Wuxing[] = ['木', '火', '土', '金', '水'];
 
-  // 月令司令加权 1.2
-  const commanderStem = baziResult.monthCommander ? baziResult.monthCommander.slice(0, 1) : '';
-  const commanderWuxing = commanderStem ? getWuxing(commanderStem) : null;
-  if (commanderWuxing && rawCounts[commanderWuxing]) {
-    rawCounts[commanderWuxing] += 1.2;
-  }
-
-  // 总分在司令加权之后统计，保证五行比例的分母与分子同一口径
+  // 加权计数只描述组成，月令旺衰由独立的季节与根气规则判断。
   const totalScore = Object.values(rawCounts).reduce((a, b) => a + b, 0) || 1;
 
-  const maxScore = Math.max(...Object.values(rawCounts));
-  const minScore = Math.min(...Object.values(rawCounts));
+  const roundedScores = Object.values(rawCounts).map((value) => Number(value.toFixed(1)));
+  const maxScore = Math.max(...roundedScores);
+  const minScore = Math.min(...roundedScores.filter((value) => value > 0));
 
   const elements = wuxingList.map((wx) => {
     const score = Number((rawCounts[wx] || 0).toFixed(1));
@@ -676,7 +677,7 @@ export function buildEnhancedFiveElementsSection(
 
     return {
       wuxing: wx,
-      count: baziResult.wuxingStrength.present.filter((w) => w === wx).length,
+      count: items.filter((item) => getWuxing(item) === wx).length,
       score,
       percentage,
       seasonStatus,
@@ -712,65 +713,6 @@ export function buildEnhancedFiveElementsSection(
 
   const dayMasterDetails = baziResult.analysis.dayMasterStrength.details;
 
-  // 中医五行脏腑健康与调摄分析
-  const tcmMap: Record<Wuxing, { organPair: string; over: string; under: string; diet: string }> = {
-    木: {
-      organPair: '肝胆 · 筋腱 · 目力 · 神经',
-      over: '木盛化火，易情绪急躁、目赤头晕、筋络紧绷或睡眠偏浅。',
-      under: '木气不足，易视力疲劳、筋骨酸软、指甲干脆、气血郁结。',
-      diet: '宜食枸杞、菊花茶、菠菜、绿豆、黑豆，常做拉伸养肝疏经。',
-    },
-    火: {
-      organPair: '心小肠 · 血液循环 · 舌面 · 神志',
-      over: '心火偏亢，易心悸失眠、口舌生疮、烦躁多梦、血压起伏。',
-      under: '心阳不足，易手足畏寒、神疲乏力、气血推动迟缓、面色少华。',
-      diet: '宜食红枣、桂圆、茯苓、莲子心、百合，保持平和作息与舒缓运动。',
-    },
-    土: {
-      organPair: '脾胃 · 消化吸收 · 肌肉四肢 · 唇口',
-      over: '土重湿滞，易腹胀胃滞、四肢困重、口黏苔厚、代谢放缓。',
-      under: '脾胃虚弱，易消化吸收不佳、食欲不振、中气不足、形体易疲。',
-      diet: '宜食山药、小米、芡实、陈皮、南瓜，三餐定时温养脾胃。',
-    },
-    金: {
-      organPair: '肺大肠 · 呼吸系统 · 鼻咽 · 皮毛',
-      over: '燥金太旺，易咽干口燥、皮肤干涩、干咳少痰、大便偏干。',
-      under: '肺气虚亏，易卫表不固、怕风易汗、抵抗力减弱、易患鼻咽呼吸敏感。',
-      diet: '宜食百合、银耳、雪梨、杏仁、白萝卜，滋阴润肺防秋燥。',
-    },
-    水: {
-      organPair: '肾膀胱 · 骨骼骨髓 · 生殖泌尿 · 耳部',
-      over: '水湿过甚，易畏寒水肿、腰重膝软、体内阳气受遏。',
-      under: '肾精不足，易腰酸腿软、耳鸣神疲、发丝干枯、精力持久度不足。',
-      diet: '宜食黑芝麻、黑米、黑豆、桑葚、核桃，戒熬夜以固摄先天肾水。',
-    },
-  };
-
-  const healthTcmAdvice = elements.map((el) => {
-    const tcm = tcmMap[el.wuxing];
-    // 阈值采用五行占比口径：占比达到 30% 视为过旺，不超过 10% 视为虚弱
-    const isOver = el.percentage >= 30;
-    const isUnder = el.percentage <= 10 || el.isMissing;
-    const status = isOver
-      ? ('过旺耗伤' as const)
-      : isUnder
-        ? ('虚弱不足' as const)
-        : ('平衡中和' as const);
-    const manifestations = isOver
-      ? tcm.over
-      : isUnder
-        ? tcm.under
-        : '五行生克平顺，脏腑功能相对协调稳健。';
-
-    return {
-      wuxing: el.wuxing,
-      organPair: tcm.organPair,
-      status,
-      manifestations,
-      wellnessDiet: tcm.diet,
-    };
-  });
-
   return {
     elements,
     dayMasterStrength: {
@@ -784,15 +726,22 @@ export function buildEnhancedFiveElementsSection(
         timely: dayMasterDetails.timely,
         seasonalEffect: dayMasterDetails.seasonalEffect,
         grounded: dayMasterDetails.hasRoot,
-        supported: dayMasterDetails.hasSupport,
-        assisted: dayMasterDetails.hasSupport,
+        supported: Object.values(pillars).some((pillar) =>
+          [pillar.gan, ...(HIDDEN_STEMS[pillar.zhi] ?? [])].some((stem) =>
+            ['正印', '偏印'].includes(getTenGod(stem, dayMaster.gan)),
+          ),
+        ),
+        assisted: ['year', 'month', 'hour'].some((key) =>
+          ['比肩', '劫财'].includes(
+            getTenGod(pillars[key as keyof typeof pillars].gan, dayMaster.gan),
+          ),
+        ),
         hasRoot: dayMasterDetails.hasRoot,
         hasStrongRoot: dayMasterDetails.hasStrongRoot,
       },
       ruleBasis: dayMasterDetails.ruleBasis,
-      judgmentSummary: `日主${dayMaster.gan}(${dayMasterWuxing})在${pillars.month.zhi}月${dayMasterDetails.seasonalEffect}，同类力量占比${sameRatio}%，异类力量占比${diffRatio}%，综合评定为【${baziResult.analysis.dayMasterStrength.status}】。`,
+      judgmentSummary: `日主${dayMaster.gan}(${dayMasterWuxing})在${pillars.month.zhi}月${dayMasterDetails.seasonalEffect}，旺衰为【${baziResult.analysis.dayMasterStrength.status}】。${dayMasterDetails.ruleBasis.join('；')}。结构加权计数中，同类占${sameRatio}%，异类占${diffRatio}%。`,
     },
-    healthTcmAdvice,
   };
 }
 
@@ -831,7 +780,7 @@ export function buildEnhancedPatternUsefulGodSection(
     },
     qiongtongAdvice: qiongtongRaw
       ? {
-          title: `${qiongtongRaw.dayMaster}木生于${qiongtongRaw.monthBranch}月`,
+          title: `${qiongtongRaw.dayMaster}生于${qiongtongRaw.monthBranch}月`,
           source: '《穷通宝鉴》十干四季调候',
           summary: qiongtongRaw.seasonSummary,
           quotes: [qiongtongRaw.classicVerse],
@@ -1178,7 +1127,54 @@ export function buildEnhancedInteractions(baziResult: BaziChartResult): MingluIn
     }
   }
 
-  return items;
+  const harmonyProfiles = assessAllHarmonyTransforms(pillarEntries, pillars.month.zhi);
+  const completeFormations = collectCompleteBranchFormations(pillars);
+  const establishedFormations = collectEstablishedBranchFormations(pillars);
+  return items.map((item) => {
+    const harmony = harmonyProfiles.find(
+      (profile) =>
+        profile.type === item.category &&
+        profile.participants.every(
+          (participant, index) =>
+            participant === `${item.involvedPillars[index]}${item.involvedStemsBranches[index]}`,
+        ),
+    );
+    if (harmony)
+      return {
+        ...item,
+        nature: '中性' as const,
+        conditionStatus: harmony.level,
+        conditionEvidence: harmony.evidence,
+        influence: harmony.consequences.join('；'),
+      };
+    const formation = completeFormations.find(
+      (profile) =>
+        `地支${profile.type}` === item.category && profile.wuxing === item.transformElement,
+    );
+    if (formation) {
+      const established = establishedFormations.some(
+        (profile) => profile.type === formation.type && profile.wuxing === formation.wuxing,
+      );
+      return {
+        ...item,
+        nature: '中性' as const,
+        conditionStatus: established ? '成势' : '结构齐全',
+        conditionEvidence: [
+          `${formation.branches.join('')}三支齐全`,
+          `月令${pillars.month.zhi}，${formation.wuxing}为${baziResult.wuxingSeasonStatus[formation.wuxing]}`,
+        ],
+        influence: established
+          ? `${formation.wuxing}得月令且未受局外地支冲破，纳入本局成势力量。`
+          : '会合结构已列出，成势所需的月令或局外冲破条件未同时满足。',
+      };
+    }
+    return {
+      ...item,
+      nature: '中性' as const,
+      conditionStatus: '关系成立',
+      influence: `${item.involvedPillars.join('、')}所见${item.involvedStemsBranches.join('、')}构成${item.category}，结合所涉十神及本局喜忌判断作用。`,
+    };
+  });
 }
 
 /** 整理全息神煞谱系与典故考据 */
@@ -1294,13 +1290,36 @@ export function buildEnhancedTenGodsSection(baziResult: BaziChartResult): Minglu
     };
   });
 
+  const familyGods: Record<string, string[]> = {
+    比劫: ['比肩', '劫财'],
+    食伤: ['食神', '伤官'],
+    财星: ['正财', '偏财'],
+    官杀: ['正官', '七杀'],
+    印星: ['正印', '偏印'],
+    日主比劫: ['比肩', '劫财'],
+  };
+  const familyPositions = (family: string) => [
+    ...(family === '日主比劫' ? [`日干${dayMasterGan}`] : []),
+    ...godsList
+      .filter((god) => familyGods[family].includes(god.tenGod))
+      .flatMap((god) => god.pillars.map((pillar) => `${pillar}（${god.tenGod}）`)),
+  ];
   const channels = [
     { from: '比劫', to: '食伤', flowType: '相生', desc: '自我能量转化为才华创意与表达行动。' },
     { from: '食伤', to: '财星', flowType: '相生', desc: '才华与技能转化为物质财富与商业价值。' },
     { from: '财星', to: '官杀', flowType: '相生', desc: '资本与资源转化为社会地位与管理权力。' },
     { from: '官杀', to: '印星', flowType: '相生', desc: '权力与威望转化为学术文化与庇护名誉。' },
     { from: '印星', to: '日主比劫', flowType: '相生', desc: '文化知识与长辈庇护滋养自身成长。' },
-  ];
+  ]
+    .filter(
+      (channel) =>
+        familyPositions(channel.from).length > 0 && familyPositions(channel.to).length > 0,
+    )
+    .map((channel) => ({
+      ...channel,
+      flowType: '相生对应',
+      desc: `${channel.from}见${familyPositions(channel.from).join('、')}；${channel.to}见${familyPositions(channel.to).join('、')}。`,
+    }));
 
   const housesSixKin = [
     {
@@ -1358,7 +1377,7 @@ export function buildEnhancedTenGodsSection(baziResult: BaziChartResult): Minglu
     dominantGods,
     flowAnalysis: {
       channels,
-      summary: '五行十神生克循环流转，五气相通则命局清奇顺畅。',
+      summary: '按本局实际透藏列出相生两端及柱位；作用程度结合双方根气、位置与合绊核定。',
     },
     housesSixKin,
   };
@@ -1545,7 +1564,7 @@ function detectSpecialEvents(
   // 1. 岁运并临
   if (yearGanZhi === luckGanZhi) {
     specialEvents.push(
-      '【岁运并临】：流年干支与大运干支完全一致，五行能量高度汇聚，为人生关键转折与蜕变契机。',
+      `【岁运并临】：流年与大运同为${yearGanZhi}，分别核对该干支在原局的喜忌、根气及引动宫位。`,
     );
   }
 
@@ -1554,16 +1573,17 @@ function detectSpecialEvents(
   const isLuckBranchHe = formsPairRelation(BRANCH_LIUHE, yZhi, lZhi);
   if (isLuckStemHe && isLuckBranchHe) {
     specialEvents.push(
-      '【岁运天地合】：流年与大运天干相合、地支相合，岁运有情，主贵人引路、协同发力、诸事和顺。',
+      `【岁运天地合】：流年${yearGanZhi}与大运${luckGanZhi}干合支合，结合原局核对合绊、争合、合化及所牵动的十神。`,
     );
   }
 
   // 3. 岁运天克地冲
-  const isLuckStemChong = formsPairRelation(STEM_CHONGS, yGan, lGan);
+  const isLuckStemKe =
+    isKe(getWuxing(yGan), getWuxing(lGan)) || isKe(getWuxing(lGan), getWuxing(yGan));
   const isLuckBranchChong = formsPairRelation(BRANCH_CHONGS, yZhi, lZhi);
-  if (isLuckStemChong && isLuckBranchChong) {
+  if (isLuckStemKe && isLuckBranchChong) {
     specialEvents.push(
-      '【岁运天克地冲】：流年与大运天干相克、地支六冲，激荡震荡，主外部环境刷新、跨界开拓或奔波历练。',
+      `【岁运天克地冲】：流年${yearGanZhi}与大运${luckGanZhi}天干五行相克、地支六冲，分清冲动喜神或忌神、根气与原局受引动的位置。`,
     );
   }
 
@@ -1572,14 +1592,14 @@ function detectSpecialEvents(
   const isDayBranchHe = formsPairRelation(BRANCH_LIUHE, yZhi, pillars.day.zhi);
   if (isDayStemHe && isDayBranchHe) {
     specialEvents.push(
-      '【岁命天地合】：流年与日柱干合支合，主情意深浓、良缘相聚、重要合作与生活喜庆。',
+      `【岁命天地合】：流年${yearGanZhi}与日柱${pillars.day.gan}${pillars.day.zhi}干合支合，核对合绊或合化条件，再结合日主与日支所代表的现实关系解释。`,
     );
   }
 
   // 5. 冲日支（配偶宫动）
   if (formsPairRelation(BRANCH_CHONGS, yZhi, pillars.day.zhi)) {
     specialEvents.push(
-      `【太岁冲日支】：流年${yZhi}与日支${pillars.day.zhi}相冲，主家庭生活环境变迁、居所修葺或出行，宜多沟通互谅。`,
+      `【太岁冲日支】：流年${yZhi}与日支${pillars.day.zhi}相冲，核对日支藏干、喜忌及合会解冲条件，结合已知伴侣关系或生活环境定位事项。`,
     );
     natalInteractions.push(`流年地支${yZhi}冲动日支${pillars.day.zhi}`);
   }
@@ -1587,7 +1607,7 @@ function detectSpecialEvents(
   // 6. 冲月令（冲提纲）
   if (formsPairRelation(BRANCH_CHONGS, yZhi, pillars.month.zhi)) {
     specialEvents.push(
-      `【太岁冲提纲】：流年${yZhi}与月令提纲${pillars.month.zhi}相冲，主事业赛道拓展、岗位转型、出外开拓新空间。`,
+      `【太岁冲提纲】：流年${yZhi}与月令${pillars.month.zhi}相冲，核对月令所取格神及根气的变化，再结合所问工作或家庭事项判断。`,
     );
     natalInteractions.push(`流年地支${yZhi}冲动月令${pillars.month.zhi}`);
   }
@@ -1598,7 +1618,7 @@ function detectSpecialEvents(
     (isHeavenlyStem(lGan) && getTenGod(lGan, dayMasterGan) === '正官');
   if (yTenGod === '伤官' && hasZhengGuan) {
     specialEvents.push(
-      '【伤官见官】：流年伤官透出与原局/大运官星相见，主突破常规思维、创新攻坚，宜遵规守信、防口舌是非。',
+      `【伤官见官】：流年${yGan}为伤官，与原局或大运正官同见；成立程度取决于双方根气、位置以及财印通关制化。`,
     );
   }
 
@@ -1608,7 +1628,7 @@ function detectSpecialEvents(
     (isHeavenlyStem(lGan) && getTenGod(lGan, dayMasterGan) === '食神');
   if (yTenGod === '偏印' && hasShiShen) {
     specialEvents.push(
-      '【枭神夺食】：流年偏印与食神交汇，主深层思虑沉淀，宜调控压力、保障充沛睡眠与精神休养。',
+      `【偏印见食神】：流年${yGan}为偏印，原局或大运可见食神；核对双方旺衰、根气、柱位和财制偏印条件，再判断是否构成枭神夺食。`,
     );
   }
 
@@ -1618,8 +1638,8 @@ function detectSpecialEvents(
 
   const yearTheme =
     specialEvents.length > 0
-      ? specialEvents[0]!.replace(/^[^【]*【/, '').replace(/】.*$/, '') + ' · 顺势而为'
-      : `岁行${yearGanZhi}（${yTenGod}）· 笃行致远`;
+      ? `${yearGanZhi}（${yTenGod}）· ${specialEvents[0]!.replace(/^[^【]*【/, '').replace(/】.*$/, '')}`
+      : `岁行${yearGanZhi}（${yTenGod}）`;
 
   return { specialEvents, natalInteractions, luckInteractions, yearTheme };
 }
@@ -1629,36 +1649,23 @@ function getLuckThemeAndAdvice(
   tenGod: string,
   zhiTenGod: string,
   ganZhi: string,
-): { lifeTheme: string; careerAdvice: string; healthAdvice: string } {
-  let lifeTheme: string;
-  let careerAdvice: string;
-  let healthAdvice: string;
-
-  if (startAge < 20) {
-    lifeTheme = `学业启智与品格奠基期（${ganZhi} · 逢${tenGod}运）`;
-    careerAdvice = '重在博闻强识、打牢知识与技术功底，广结良师益友。';
-    healthAdvice = '注重身心均衡发育、规律作息，培养良好运动习惯。';
-  } else if (startAge < 35) {
-    lifeTheme = `事业开拓与立业奋进期（${ganZhi} · 逢${tenGod}运）`;
-    careerAdvice = `天干${tenGod}显露，宜积极拓展核心竞争力、提升专业话语权，稳步建立社会信誉与资源壁垒。`;
-    healthAdvice = '注意劳逸结合，防颈椎腰肌紧绷，保持充沛作息节律。';
-  } else if (startAge < 50) {
-    lifeTheme = `事业中流砥柱与财富丰隆期（${ganZhi} · 逢${tenGod}运）`;
-    careerAdvice = `干支坐${tenGod}/${zhiTenGod}，利于统筹大局、资源整合与团队带领，善用长远战略眼光布局。`;
-    healthAdvice = '重在养护心脾与代谢平衡，多做慢跑、太极等舒缓调和身心运动。';
-  } else if (startAge < 65) {
-    lifeTheme = `经验沉淀与传承守护期（${ganZhi} · 逢${tenGod}运）`;
-    careerAdvice = '重在稳健守成、传承提携后进、统御全局，注重风险控制与资产稳健。';
-    healthAdvice = '注重心脑血管调养与温补脾肾，保持豁达心境与规律生活。';
-  } else {
-    lifeTheme = `德高望重与颐养天年期（${ganZhi} · 逢${tenGod}运）`;
-    careerAdvice = '重在修心养性、享受天伦、传家育德、安闲自适。';
-    healthAdvice = '顺应四时节气，早睡早起，适度散步，怡情养性。';
-  }
-
-  return { lifeTheme, careerAdvice, healthAdvice };
+  usefulGod: BaziChartResult['analysis']['usefulGod'],
+): { lifeTheme: string; careerAdvice: string } {
+  return {
+    lifeTheme: `${startAge}岁起行${ganZhi}，天干${tenGod}、支本气${zhiTenGod}。`,
+    careerAdvice: [
+      TEN_GODS_DEFINITIONS[tenGod]
+        ? `运干十神取象：${TEN_GODS_DEFINITIONS[tenGod].description}`
+        : '童限结合所列流年干支核对。',
+      TEN_GODS_DEFINITIONS[zhiTenGod]
+        ? `运支本气取象：${TEN_GODS_DEFINITIONS[zhiTenGod].description}`
+        : '',
+      `本局取用：${usefulGod.primaryUseful || usefulGod.useful || '待定'}；运中作用结合下列原局合冲及逐年变化判断。`,
+    ]
+      .filter(Boolean)
+      .join(''),
+  };
 }
-
 /** 整理大运流年流月全息编年大表 */
 export function buildEnhancedLuckChronicleSection(
   baziResult: BaziChartResult,
@@ -1682,11 +1689,12 @@ export function buildEnhancedLuckChronicleSection(
     const luckZhiTenGod = isZhiValid ? getTenGodForBranch(zhi, dayMasterGan) : '—';
     const luckStage = isZhiValid ? getLifeStage(dayMasterGan, zhi) : '—';
 
-    const { lifeTheme, careerAdvice, healthAdvice } = getLuckThemeAndAdvice(
+    const { lifeTheme, careerAdvice } = getLuckThemeAndAdvice(
       cycle.age,
       luckTenGod,
       luckZhiTenGod,
       cycle.ganZhi,
+      baziResult.analysis.usefulGod,
     );
 
     const annualYears: MingluAnnualYearItem[] = sourceYears.map((y) => {
@@ -1755,7 +1763,6 @@ export function buildEnhancedLuckChronicleSection(
         : [`大运${cycle.ganZhi}主事十年，统领岁干流变`],
       lifeTheme,
       careerAdvice,
-      healthAdvice,
       annualYears,
     };
   });
@@ -1782,7 +1789,8 @@ export function buildBeginnerGuide(baziResult: BaziChartResult): MingluBeginnerG
   const dayMasterGan = baziResult.dayMaster.gan;
   const strengthStatus = baziResult.analysis.dayMasterStrength.status;
   const patternName = baziResult.analysis.mingGe.pattern;
-  const primaryUseful = baziResult.analysis.usefulGod.primaryUseful || '印比帮身';
+  const primaryUseful =
+    baziResult.analysis.usefulGod.primaryUseful || baziResult.analysis.usefulGod.useful || '待定';
 
   const GAN_ARCHETYPES: Record<
     string,
@@ -1852,10 +1860,7 @@ export function buildBeginnerGuide(baziResult: BaziChartResult): MingluBeginnerG
 
   const info = GAN_ARCHETYPES[dayMasterGan] || GAN_ARCHETYPES['甲']!;
 
-  const strengthPlain =
-    strengthStatus.includes('旺') || strengthStatus.includes('强')
-      ? `【日主偏旺 · 自带充沛能量蓄水池】：你的天生元气非常旺盛，自主性强、精力充沛，不怕挑战。对你而言，人生最适合“输出才华、开拓事业与转化财富”（食伤/财/官为喜用），越敢于承担与创造，成就越大。`
-      : `【日主偏弱 · 善于整合借力之智者】：你的天生元气偏向细腻内敛，善于观察、借势与团队协作。对你而言，人生最适合“依靠平台、深厚知识与得力贵人”（印比为喜用），切忌单打独斗硬拼，善借外力则势如破竹。`;
+  const strengthPlain = `【日主${strengthStatus}】${baziResult.analysis.dayMasterStrength.details.ruleBasis.join('；')}。本局取用为【${primaryUseful}】。${baziResult.analysis.usefulGod.strategyTrace?.join('；') || baziResult.analysis.usefulGod.primaryReason || ''}`;
 
   const favorableHabitsPlain = [
     `核心调和五行：【${primaryUseful}】，建议在生活与工作中多向该五行属性的行业、思维方式或生活习惯靠拢。`,

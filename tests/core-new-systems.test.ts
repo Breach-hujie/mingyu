@@ -370,7 +370,7 @@ test('taiyi: 年家七十二局立成（依古籍与 Kintaiyi 逐局表校订）
   assert.match(r.evidenceAnalysis.promptText, /【太乙四计七十二局结构化证据】/);
   assert.deepEqual(
     r.evidenceAnalysis.calculationSteps.map((step) => step.name),
-    ['360周期余数', '72数段', '60数段', '局数'],
+    ['360周期余数', '72数段', '60数段', '局数', '三门', '五将', '阴阳和'],
   );
   assert.ok(
     r.evidenceAnalysis.calculationSteps.every(
@@ -386,7 +386,7 @@ test('taiyi: 年家七十二局立成（依古籍与 Kintaiyi 逐局表校订）
   assert.equal(r.evidenceAnalysis.positionFacts.length, 4);
   assert.equal(r.evidenceAnalysis.forceFacts.length, 3);
   assert.equal(r.evidenceAnalysis.sixteenGodFacts.length, 16);
-  assert.equal(r.evidenceAnalysis.conditionFacts.length, 4);
+  assert.equal(r.evidenceAnalysis.conditionFacts.length, 7);
   assert.deepEqual(
     r.evidenceAnalysis.forceFacts.map((item) => item.side),
     ['主', '客', '定'],
@@ -433,10 +433,13 @@ test('taiyi: 年家七十二局立成（依古籍与 Kintaiyi 逐局表校订）
       ['囚', '已命中'],
       ['主将参中宫', '未命中'],
       ['客将参中宫', '未命中'],
+      ['三门', '未命中'],
+      ['五将', '未命中'],
+      ['阴阳和', '未命中'],
     ],
   );
   assert.equal(r.evidenceAnalysis.counterSummaryFact.status, '存在未命中条件');
-  assert.equal(r.evidenceAnalysis.counterSummaryFact.factKeys.length, 2);
+  assert.equal(r.evidenceAnalysis.counterSummaryFact.factKeys.length, 5);
   assert.equal(r.evidenceAnalysis.limitationFacts.length, 5);
   assert.equal(r.evidenceAnalysis.summaryFact.key, 'taiyi:evidence-summary');
   assert.equal(r.evidenceAnalysis.summaryFact.status, '证据链完整');
@@ -488,6 +491,23 @@ test('taiyi: 年家七十二局立成（依古籍与 Kintaiyi 逐局表校订）
       (item) => item.kind === '囚' && item.matched && item.promptText.includes('客大将与太乙同宫'),
     ),
   );
+  assert.deepEqual(
+    {
+      threeGates: r.conditions.threeGates.status,
+      directGate: r.conditions.threeGates.directGate,
+      fiveGenerals: r.conditions.fiveGenerals.launched,
+      yinYangHarmony: r.conditions.yinYangHarmony.matched,
+    },
+    {
+      threeGates: '两门不具',
+      directGate: '生门',
+      fiveGenerals: false,
+      yinYangHarmony: false,
+    },
+  );
+  assert.ok(r.evidenceAnalysis.conditionFacts.some((item) => item.kind === '三门'));
+  assert.ok(r.evidenceAnalysis.conditionFacts.some((item) => item.kind === '五将'));
+  assert.ok(r.evidenceAnalysis.conditionFacts.some((item) => item.kind === '阴阳和'));
   assert.match(r.evidenceAnalysis.promptText, /算式核验：.*360周期余数.*72数段.*60数段.*局数/);
   assert.ok(r.evidenceAnalysis.primaryFacts.some((item) => item.startsWith('掩成立')));
   assert.ok(!r.evidenceAnalysis.counterEvidence.some((item) => item.startsWith('未见囚')));
@@ -537,7 +557,10 @@ test('taiyi: 未见掩囚时应明确输出反证而非省略', () => {
   assert.ok(result.evidenceAnalysis.counterEvidence.some((item) => item.startsWith('未见囚')));
   assert.match(result.evidenceAnalysis.promptText, /反证核验：未见掩/);
   assert.equal(result.evidenceAnalysis.counterSummaryFact.status, '存在未命中条件');
-  assert.equal(result.evidenceAnalysis.counterSummaryFact.factKeys.length, 3);
+  assert.equal(
+    result.evidenceAnalysis.counterSummaryFact.factKeys.length,
+    result.evidenceAnalysis.counterEvidenceFacts.filter((item) => item.status === '未命中').length,
+  );
 });
 
 test('taiyi: 年家 72 局应完整覆盖且宫卦名不与字位混用', () => {

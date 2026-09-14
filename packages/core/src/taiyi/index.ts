@@ -18,9 +18,28 @@ import { createUtcTimestamp } from '../calendar/date-validation';
 import { SolarTime } from 'tyme4ts';
 import { getSixtyCycle, isValidGanZhi } from '../ganzhi';
 import type { TaiyiModelInfo, TaiyiResult, TaiyiScope } from '../types/divination';
+import { evaluateTaiyiConditions } from './conditions';
+import type { TaiyiRuleConditions } from './conditions';
 import { buildTaiyiEvidence } from './evidence';
 
+export { evaluateTaiyiConditions, TAIYI_POINT_WUXING } from './conditions';
+
 export type { TaiyiModelInfo, TaiyiResult, TaiyiScope } from '../types/divination';
+export type {
+  TaiyiConditionInput,
+  TaiyiFiveGeneralsCondition,
+  TaiyiFiveGeneralsRelation,
+  TaiyiGateName,
+  TaiyiGateRoleFact,
+  TaiyiHostGuestElementFact,
+  TaiyiHostGuestElementRelation,
+  TaiyiPalaceRelation,
+  TaiyiRuleConditions,
+  TaiyiThreeGateCondition,
+  TaiyiYinYangCondition,
+  TaiyiYinYangPairFact,
+  TaiyiWuxing,
+} from './conditions';
 export type {
   TaiyiConditionFact,
   TaiyiCounterEvidenceFact,
@@ -300,7 +319,8 @@ export const TAIYI_MODEL_INFO: TaiyiModelInfo = {
   id: 'taiyi-four-calculations-72-table',
   name: '太乙四计七十二局基础盘',
   supportedScopes: ['year', 'month', 'day', 'hour'],
-  precision: '年计按积年起局；月计按逐月节气换局；日、时计采用现代历法定位，时计按冬夏至分阴阳遁',
+  precision:
+    '年计按积年起局；月计按逐月节气换局；日、时计采用现代历法定位，时计按冬夏至分阴阳遁；三门、五将、阴阳和按所列《太乙金镜式经》条文复算，仍属于传统规则条件',
   sources: [
     {
       title: '《太乙金镜式经》',
@@ -311,6 +331,11 @@ export const TAIYI_MODEL_INFO: TaiyiModelInfo = {
       title: 'Kintaiyi',
       url: 'https://github.com/kentang2017/kintaiyi/tree/9842d8f35e895ea6f09e9787edf6da5c16fab91b',
       evidence: '用于交叉核对四计积数、阴阳遁、七十二局位置表与主客定算立成',
+    },
+    {
+      title: '《太乙金镜式经》三门、五将与阴阳和条文',
+      url: 'https://www.shidianguji.com/book/SK1615/chapter/1l9lir94lo45l',
+      evidence: '用于计算三门直使、五将发不发与太乙及上下二目和算的阴阳配合条件',
     },
   ],
 };
@@ -368,14 +393,18 @@ export function evaluateTaiyiTacticGuidance(params: {
   guestCount: number;
   lordNature?: string;
   guestNature?: string;
+  conditions?: TaiyiRuleConditions;
 }): string {
-  const { lordCount, guestCount, lordNature, guestNature } = params;
+  const { lordCount, guestCount, lordNature, guestNature, conditions } = params;
   const describe = (side: string, count: number, nature?: string) =>
     `${side}算${count}${nature ? `（${nature}）` : ''}，${count >= 11 ? '为长算，传统取缓而深入' : '为短算，传统取急而浅为'}`;
+  const conditionText = conditions
+    ? `盘面条件：${conditions.threeGates.status}（直使${conditions.threeGates.directGate}，${conditions.threeGates.blockedRoles.length ? `涉及${conditions.threeGates.blockedRoles.join('、')}` : '太乙与文昌主目均未落三吉门，始击门位单列'}）；五将${conditions.fiveGenerals.launched ? '发' : '不发'}；阴阳${conditions.yinYangHarmony.matched ? '和' : '不和'}`
+    : '当前未传入三门、五将、阴阳和盘面事实，不能据长短单独断胜负';
   return [
     describe('主', lordCount, lordNature),
     describe('客', guestCount, guestNature),
-    '主客胜负须合看三门具否、五将发否、阴阳和否；主客吉凶条件相等时，再以算之长短比较',
+    `主客胜负须合看三门具否、五将发否、阴阳和否；${conditionText}；主客吉凶条件相等时，再以算之长短比较`,
   ].join('；');
 }
 
@@ -622,6 +651,21 @@ export function generateTaiyi(input: TaiyiInput): TaiyiResult {
   const setAssistant = assistantPalaceFromGeneral(setGeneral);
   const yuan = Math.ceil(entryYears / 72);
   const ji = Math.ceil(entryYears / 60);
+  const conditions = evaluateTaiyiConditions({
+    accumulatedValue,
+    taiyiPosition,
+    taiyiPalace,
+    wenChangPosition,
+    wenChangPalace,
+    shiJiPosition,
+    shiJiPalace,
+    lordCount,
+    guestCount,
+    lordGeneral,
+    lordAssistant,
+    guestGeneral,
+    guestAssistant,
+  });
 
   const judgments: string[] = [];
   if (shiJiPalace === taiyiPalace) judgments.push('掩：始击与太乙同宫，传统称客目掩太乙。');
@@ -645,6 +689,9 @@ export function generateTaiyi(input: TaiyiInput): TaiyiResult {
   if (guestGeneral === 5 || guestAssistant === 5) {
     judgments.push('客大将或客参将居中宫。');
   }
+  judgments.push(
+    `${conditions.threeGates.status}（直使${conditions.threeGates.directGate}）；五将${conditions.fiveGenerals.launched ? '发' : '不发'}；阴阳${conditions.yinYangHarmony.matched ? '和' : '不和'}。`,
+  );
 
   const sixteenGods = TAIYI_16_GODS.map(({ branch, name }) => ({ branch, god: name }));
   const taiyiProfile = TAIYI_PALACES[taiyiPalace];
@@ -685,6 +732,7 @@ export function generateTaiyi(input: TaiyiInput): TaiyiResult {
     setGeneral,
     setAssistant,
     sixteenGods,
+    conditions,
     model: TAIYI_MODEL_INFO,
   });
   const countNatures = {
@@ -697,6 +745,7 @@ export function generateTaiyi(input: TaiyiInput): TaiyiResult {
     guestCount,
     lordNature,
     guestNature,
+    conditions,
   });
   const prompt = [
     `【太乙神数 · ${scopeInfo.title}】`,
@@ -708,6 +757,7 @@ export function generateTaiyi(input: TaiyiInput): TaiyiResult {
     `核心宫位：太乙在${taiyiPosition}（第${taiyiPalace}宫，${taiyiProfile.gua}卦，${taiyiProfile.dir}，五行${taiyiProfile.wu}）；文昌（主目）在${wenChangPosition}（第${wenChangPalace}宫）；始击（客目）在${shiJiPosition}（第${shiJiPalace}宫）；计神在${jiShenPosition}（第${jiShenPalace}宫）。`,
     `主客定算：主算 ${lordCount}${lordNature ? `（${lordNature}）` : ''}；客算 ${guestCount}${guestNature ? `（${guestNature}）` : ''}；定算 ${setCount}${setNature ? `（${setNature}）` : ''}。`,
     `大局攻守：${tacticGuidance}。`,
+    `门将阴阳和：${conditions.threeGates.status}（直使${conditions.threeGates.directGate}）；五将${conditions.fiveGenerals.launched ? '发' : '不发'}；阴阳${conditions.yinYangHarmony.matched ? '和' : '不和'}。`,
     `将参：主大将${formatGeneralPalace(lordGeneral)}、主参将${formatGeneralPalace(lordAssistant)}；客大将${formatGeneralPalace(guestGeneral)}、客参将${formatGeneralPalace(guestAssistant)}；定大将${formatGeneralPalace(setGeneral)}、定参将${formatGeneralPalace(setAssistant)}。`,
     `十六神：${sixteenGods.map((item) => `${item.branch}${item.god}`).join('、')}。`,
     ...(() => {
@@ -752,6 +802,7 @@ export function generateTaiyi(input: TaiyiInput): TaiyiResult {
     setGeneral,
     setAssistant,
     sixteenGods,
+    conditions,
     judgments,
     model: TAIYI_MODEL_INFO,
     evidenceAnalysis,
@@ -761,6 +812,7 @@ export function generateTaiyi(input: TaiyiInput): TaiyiResult {
 
 export const taiyi = {
   generateTaiyi,
+  evaluateTaiyiConditions,
   evaluateTaiyiTacticGuidance,
   TAIYI_16_GODS,
   TAIYI_BASE_YEARS,

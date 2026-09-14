@@ -393,7 +393,7 @@ test('奇门应期内外宫应随阴阳遁切换', () => {
     isYangDun: true,
     zhiFuLandingPalace: 8,
   });
-  assert.equal(yangInner.rhythm, '快');
+  assert.equal(yangInner.rhythm, '中');
   assert.ok(yangInner.sources.some((source) => source.includes('阳遁内宫速应')));
   assert.ok(!yangInner.sources.some((source) => source.includes('外宫迟应')));
   assert.match(yangInner.description, /内宫用神/);
@@ -403,7 +403,7 @@ test('奇门应期内外宫应随阴阳遁切换', () => {
     isYangDun: false,
     zhiFuLandingPalace: 9,
   });
-  assert.equal(yinInner.rhythm, '快');
+  assert.equal(yinInner.rhythm, '中');
   assert.ok(yinInner.sources.some((source) => source.includes('阴遁内宫速应')));
   assert.match(yinInner.description, /内宫用神/);
 
@@ -411,12 +411,12 @@ test('奇门应期内外宫应随阴阳遁切换', () => {
     isYangDun: true,
     zhiFuLandingPalace: 9,
   });
-  assert.equal(yangOuter.rhythm, '慢');
+  assert.equal(yangOuter.rhythm, '中');
   assert.ok(yangOuter.sources.some((source) => source.includes('阳遁外宫迟应')));
   assert.match(yangOuter.description, /外宫用神/);
 });
 
-test('奇门应期空亡只应在用神落空时延迟', () => {
+test('奇门应期空亡只应在应期基准宫位落空时延迟', () => {
   const notVoid = generateQimen(new Date('2024-01-01T00:00:00+08:00'));
   const notVoidZhiFuPalace = notVoid.jiuGongGe.find((palace) =>
     hasTianPanStar(palace, notVoid.zhiFu),
@@ -486,6 +486,36 @@ test('奇门应期按格局类别列出支持与限制，不读取内部评分�
   assert.match(text, /支持格局：青龙返首/);
   assert.match(text, /限制格局：白虎猖狂/);
   assert.doesNotMatch(text, /大吉格|大凶格|显著加快|显著延迟|评分|分值/);
+});
+
+test('奇门主入口无事项用神时应标记值符通用参考并隔离全盘格局', () => {
+  const data = generateQimen(new Date('2025-01-01T08:00:00+08:00'));
+  const sources = data.yingQi?.sources ?? [];
+
+  assert.match(sources[0] ?? '', /^值符通用参考落/);
+  assert.doesNotMatch(sources[0] ?? '', /用神落/);
+  assert.ok(sources.some((source) => source.includes('未选定事项用神')));
+  assert.ok(!sources.some((source) => source.startsWith('值符落')));
+  assert.ok(
+    !sources.some((source) => source.startsWith('支持格局：') || source.startsWith('限制格局：')),
+  );
+});
+
+test('奇门应期同宫值符与用神只计一次且格局按用神宫筛选', () => {
+  const yingQi = estimateYingQi([], 9, {
+    isYangDun: true,
+    zhiFuLandingPalace: 9,
+    classicPatterns: [
+      { name: '本宫吉格', tone: 'good', palace: 9 },
+      { name: '他宫凶格', tone: 'bad', palace: 1 },
+    ],
+  });
+
+  assert.equal(yingQi.rhythm, '中');
+  assert.ok(yingQi.sources.some((source) => source.includes('值符与用神同落9宫')));
+  assert.ok(yingQi.sources.some((source) => source === '支持格局：本宫吉格'));
+  assert.ok(!yingQi.sources.some((source) => source.includes('他宫凶格')));
+  assert.ok(!yingQi.sources.some((source) => source.includes('值符落9宫（阳遁外宫），应期偏缓')));
 });
 
 test('奇门算法会输出节令背景与复合格局结构', () => {
