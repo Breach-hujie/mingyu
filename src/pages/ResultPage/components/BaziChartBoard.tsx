@@ -1,6 +1,7 @@
 import { memo, useCallback, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   filterCommonBaziShenSha,
+  formatUsefulGodFunctions,
   getShenShaType,
   getTenGod,
   getTenGodForBranch,
@@ -18,6 +19,7 @@ import { HIDDEN_STEMS, NAYIN_MAP } from '@core/bazi/baziMappingsData';
 import { getLifeStage } from '@core/bazi/baziValues';
 import { calculateKongWangBranches } from '@core/bazi/kongWang';
 import { uniqueNonEmptyStrings } from '@/lib/array-utils';
+import { formatBaziDecisionDetails } from '@/lib/bazi-decision-details';
 import {
   BaziFortuneSelector,
   type BaziFortuneDisplayColumn,
@@ -724,6 +726,8 @@ export const BaziChartBoard = memo(function BaziChartBoard(props: {
   } as CSSProperties;
   const { openTerm } = useMetaphysicsTermModal();
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const functionalUse = formatUsefulGodFunctions(result.analysis.usefulGod);
+  const decisionDetails = formatBaziDecisionDetails(result);
 
   const formatBaziChartText = useCallback(() => {
     return [
@@ -731,7 +735,9 @@ export const BaziChartBoard = memo(function BaziChartBoard(props: {
       `时间：${formatBaziDate(result)} (${result.timeInfo.name})  性别：${formatGender(result.gender)}`,
       `格局：${result.analysis.mingGe.pattern}  旺衰：${result.analysis.dayMasterStrength.status}`,
       `四柱：年柱【${result.pillars.year.gan}${result.pillars.year.zhi}】 月柱【${result.pillars.month.gan}${result.pillars.month.zhi}】 日柱【${result.pillars.day.gan}${result.pillars.day.zhi}】 时柱【${result.pillars.hour.gan}${result.pillars.hour.zhi}】`,
-      `核心用神：${result.analysis.usefulGod.primaryUseful || result.analysis.usefulGod.useful || '无'}  忌神：${result.analysis.usefulGod.primaryAvoid || result.analysis.usefulGod.avoid || '无'}`,
+      `五行取用：${result.analysis.usefulGod.primaryUseful || result.analysis.usefulGod.useful || '无'}  所忌：${result.analysis.usefulGod.primaryAvoid || result.analysis.usefulGod.avoid || '无'}`,
+      ...formatUsefulGodFunctions(result.analysis.usefulGod),
+      ...formatBaziDecisionDetails(result),
       activeFortuneColumns.length
         ? `当前岁运：${activeFortuneColumns.map((c) => `${c.label}:${c.gan}${c.zhi}`).join(' ')}`
         : '',
@@ -917,7 +923,7 @@ export const BaziChartBoard = memo(function BaziChartBoard(props: {
               )
             }
           >
-            <span>核心用神</span>
+            <span>五行取用</span>
             <strong>
               {result.analysis.usefulGod.primaryUseful ||
                 result.analysis.usefulGod.useful ||
@@ -933,13 +939,37 @@ export const BaziChartBoard = memo(function BaziChartBoard(props: {
               )
             }
           >
-            <span>核心忌神</span>
+            <span>五行所忌</span>
             <strong>
               {result.analysis.usefulGod.primaryAvoid || result.analysis.usefulGod.avoid || '待定'}
             </strong>
             <small>{formatAvoidGodPrioritySummary(result)}</small>
           </div>
         </div>
+      ) : null}
+
+      {!isInstant ? (
+        <details className="traditional-classic-card">
+          <summary className="traditional-classic-head">
+            <strong>旺衰、格局与取用依据</strong>
+            <span className="traditional-classic-toggle">查看依据</span>
+          </summary>
+          <div className="traditional-classic-body">
+            {decisionDetails.map((line) => (
+              <p key={line}>{line}</p>
+            ))}
+          </div>
+        </details>
+      ) : null}
+
+      {functionalUse.length ? (
+        <section className="traditional-classic-card" aria-label="天干取用作用">
+          <div className="traditional-classic-body">
+            {functionalUse.map((line) => (
+              <p key={line}>{line}</p>
+            ))}
+          </div>
+        </section>
       ) : null}
 
       <div className="bazi-core-layout">
@@ -1155,7 +1185,7 @@ export const BaziChartBoard = memo(function BaziChartBoard(props: {
             <div>
               <span className="traditional-classic-badge">穷通宝鉴</span>
               <strong>
-                {dayMasterGan}日主生于{monthBranchZhi}月 · 调候用神
+                {dayMasterGan}日主生于{monthBranchZhi}月 · 调候参考
               </strong>
             </div>
             <span className="traditional-classic-toggle">
@@ -1172,10 +1202,10 @@ export const BaziChartBoard = memo(function BaziChartBoard(props: {
 【覆盖提示】${qiongtongAdvice.requestedMonth}月暂无直接条目，本条借用同季${qiongtongAdvice.matchedMonth}月资料，属同季一般参考而非本月专条`
                   : ''}
                 {qiongtongAdvice.primaryGods?.length
-                  ? `\n【核心喜用】优先取：${qiongtongAdvice.primaryGods.join('、')}`
+                  ? `\n【条文取用】${qiongtongAdvice.primaryGods.join('、')}`
                   : ''}
                 {qiongtongAdvice.taboos?.length
-                  ? `\n【格局忌讳】防范：${qiongtongAdvice.taboos.join('、')}`
+                  ? `\n【条文所忌】${qiongtongAdvice.taboos.join('、')}`
                   : ''}
               </p>
             </div>
