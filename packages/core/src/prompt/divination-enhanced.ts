@@ -3,7 +3,11 @@ import { formatWuyunLiuqiFacts } from '../wuyun-liuqi';
 import { formatAstrolabeForPrompt } from './astrolabe';
 import { formatLiurenLesson, formatLiurenTransmission } from './liuren-facts';
 import { formatMeihuaFacts } from './meihua-facts';
-import { formatQimenHourStem, formatQimenRelationFacts } from './qimen-facts';
+import {
+  formatQimenHourStem,
+  formatQimenRelationFacts,
+  formatQimenStemLocations,
+} from './qimen-facts';
 import { resolveXiaoliurenRule } from '../divination/xiaoliuren-rules';
 import type {
   AlmanacData,
@@ -52,25 +56,17 @@ import { formatHuangjiCivilYear } from '../huangji-jingshi/standard';
 import { resolveSsgwStoryContent } from '../divination/ssgw-content';
 import { formatJinkoujueRelations, formatJinkoujueMovementRules } from './jinkoujue-facts';
 
-function joinPromptSentences(items: Array<string | undefined>) {
-  return items
-    .filter((item): item is string => Boolean(item?.trim()))
-    .map((item) => item.trim().replace(/[。、；，]+$/u, ''))
-    .join('；');
-}
-
 function formatZhugeInfo(data: ZhugeNumberResult) {
   const interpretation = data.interpretation ?? getZhugeInterpretation(data.number);
+  const basicInterpretation = interpretation
+    ? [interpretation.quote, interpretation.imageMeaning, interpretation.interpretation].join('；')
+    : data.sign.summary;
   return [
-    '占法：诸葛神数',
-    `所写三字：${data.text}`,
-    `康熙笔画：${data.chars.map((char, index) => `${char}${data.strokes[index]}画`).join('、')}`,
-    `取数：${data.digits.join('')}，归入第${data.number}签`,
+    `签号：第${data.number}签`,
     `签诗：${data.sign.poem}`,
-    `基础解意：${interpretation?.interpretation ?? data.sign.summary}`,
-    interpretation ? `诗句取象：${interpretation.quote}；${interpretation.imageMeaning}` : '',
-    interpretation ? `补充解释：${interpretation.condition}` : '',
-    interpretation?.classicalImage ? `典故取象：${interpretation.classicalImage}` : '',
+    interpretation?.classicalImage ? `典故：${interpretation.classicalImage}` : '',
+    `基础解签：${basicInterpretation}`,
+    interpretation?.condition ? `补充解释：${interpretation.condition}` : '',
   ]
     .filter(Boolean)
     .join('\n');
@@ -78,22 +74,20 @@ function formatZhugeInfo(data: ZhugeNumberResult) {
 
 function formatKongmingInfo(data: KongmingHexagramResult) {
   const interpretation = data.interpretation ?? getKongmingInterpretation(data.symbol);
+  const classicalImage = interpretation.classicalImage;
   return [
-    '占法：孔明神卦',
-    `五枚硬币：${data.symbol}（●为正面、阳；○为反面、阴；按摆放顺序排列）`,
-    `卦序：第${data.number}卦`,
-    `卦名：${data.name}`,
-    `等第：${data.grade}`,
-    `卦诗：${data.poem}`,
-    `诗句取象：${interpretation.quote}；${interpretation.imageMeaning}`,
-    `基础解卦：${interpretation.interpretation}`,
+    `签号：第${data.number}签`,
+    `签题：${data.name}`,
+    `签诗：${data.poem}`,
+    `吉凶级别：${data.grade}`,
+    classicalImage
+      ? `典故：${classicalImage.title}“${classicalImage.quote}”；${classicalImage.meaning}`
+      : '',
+    `基础解签：${interpretation.quote}；${interpretation.imageMeaning}；${interpretation.interpretation}`,
     `补充解释：${interpretation.condition}`,
-    ...(interpretation.classicalImage
-      ? [
-          `卦名取象：${interpretation.classicalImage.title}“${interpretation.classicalImage.quote}”；${interpretation.classicalImage.meaning}`,
-        ]
-      : []),
-  ].join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 function getMeihuaMethodLabel(
@@ -734,75 +728,14 @@ function formatQimenBirthInfo(data: QimenData, supplementaryInfo?: Supplementary
   ].join('\n');
 }
 
-function evaluateQimenHostGuestStrategy(
-  data: QimenData,
-  primaryPalaceFact?: ReturnType<typeof analyzeQimenEvidence>['candidates'][number],
-): string {
-  if (!primaryPalaceFact) return '';
-  const palace = primaryPalaceFact.palace;
-  const constraints = primaryPalaceFact.constraints || [];
-  const hasMenPo = constraints.some((c) => c.includes('门迫'));
-  const hasJiXing = constraints.some((c) => c.includes('击刑'));
-  const hasRuMu = constraints.some((c) => c.includes('入墓'));
-  const hasKongWang = data.voidPalaces?.some((v) => v.palace === palace.gong);
-
-  if (hasMenPo || hasJiXing) {
-    return '该宫带门迫或击刑，气机受阻，动则生变招尤，宜守静待时，不宜轻进';
-  }
-  if (hasRuMu || hasKongWang) {
-    return '该宫逢空或入墓，机能暂时潜藏，宜积蓄实力、待出空冲实之时再图发力';
-  }
-
-  const god = palace.shenPan?.god;
-  const star = palace.tianPan?.star;
-  const door = palace.renPan?.door;
-
-  if (god === '九天' || star === '天冲' || door === '开门' || door === '生门') {
-    return '天盘生发势盛，兵法利客，宜主动出击、积极谋求、先发制人';
-  }
-  if (god === '九地' || god === '太阴' || door === '杜门' || door === '休门') {
-    return '神门凝敛守静，兵法利主，宜以逸待劳、沉潜蓄势、后发制人';
-  }
-
-  return '主客相称，宜审时度势，谋定而动';
-}
-
 function formatQimenInfo(data: QimenData, supplementaryInfo?: SupplementaryInfo) {
   const evidenceAnalysis = data.evidenceAnalysis?.palaceFacts
     ? data.evidenceAnalysis
     : analyzeQimenEvidence(data);
-  const primaryUsefulPalace = evidenceAnalysis.candidates[0];
-  const hostGuestDecision = evaluateQimenHostGuestStrategy(data, primaryUsefulPalace);
-  const formatUsefulPalaceFactLines = (items: string[], fallback: string) =>
-    (items.length ? items : [fallback])
-      .filter(
-        (item) =>
-          !items.some(
-            (other) =>
-              other !== item &&
-              /^该宫带有/u.test(other) &&
-              /^(门迫|击刑|入墓|空亡)[：：]/u.test(item),
-          ),
-      )
-      .map((item) => joinPromptSentences([item.replace('，不作通用吉凶评分', '')]));
-  const focusSupport = primaryUsefulPalace
-    ? formatUsefulPalaceFactLines(primaryUsefulPalace.support, '盘面平稳').filter(
-        (item) => item !== '值符同宫',
-      )
-    : [];
-  const focusConstraints = primaryUsefulPalace
-    ? formatUsefulPalaceFactLines(primaryUsefulPalace.constraints, '未见明显空亡入墓')
-        .filter((item) => item !== `${primaryUsefulPalace.palace.renPan.door}同宫`)
-        .map((item) => item.replace(/^该宫带有/u, ''))
-    : [];
-  const focusLines = primaryUsefulPalace
-    ? [
-        `取用主线：优先看${primaryUsefulPalace.name}（${primaryUsefulPalace.direction}，${primaryUsefulPalace.element}）`,
-        `门星神干：${[primaryUsefulPalace.palace.renPan.door, primaryUsefulPalace.palace.tianPan.star, primaryUsefulPalace.palace.tianPan.companionStar, primaryUsefulPalace.palace.shenPan.god, primaryUsefulPalace.palace.tianPan.stem, primaryUsefulPalace.palace.tianPan.companionStem, primaryUsefulPalace.palace.diPan.stem].filter(Boolean).join('、')}`,
-        `宫况：\n${[...focusSupport, ...focusConstraints].join('\n')}`,
-        hostGuestDecision ? `主客动静：${hostGuestDecision}` : '',
-      ].filter(Boolean)
-    : ['取用主线：以值符、值使、时干落宫为先，再看格局与宫间生克'];
+  const focusLines = [
+    '取用主线：先按问题确定主体、事项用神与主客身份，再到九宫核对落点；值符值使提供全局背景。',
+    ...evidenceAnalysis.candidates.map((item) => `候选宫${item.name}：${item.sources.join('、')}`),
+  ];
   const zhiFuPalace = data.jiuGongGe.find(
     (item) => item.tianPan.star === data.zhiFu || item.tianPan.companionStar === data.zhiFu,
   );
@@ -844,11 +777,13 @@ function formatQimenInfo(data: QimenData, supplementaryInfo?: SupplementaryInfo)
     birthInfo,
     seasonalitySummary ? `节令：${seasonalitySummary}` : '',
     `值符值使与时干：值符${data.zhiFu}${zhiFuPalace ? `落${zhiFuPalace.name}` : '未见落宫'}；值使${data.zhiShi}${zhiShiPalace ? `落${zhiShiPalace.name}` : '未见落宫'}；${formatQimenHourStem(data)}`,
-    ...formatQimenRelationFacts(zhiFuPalace, zhiShiPalace, primaryUsefulPalace?.palace),
+    ...formatQimenRelationFacts(zhiFuPalace, zhiShiPalace, undefined),
+    ...data.jiuGongGe.flatMap((palace) => formatQimenRelationFacts(undefined, undefined, palace)),
     `旬空与马星：旬空${voidText}；马星${horseText}`,
     specialConditionsText ? `特殊时辰：${specialConditionsText}` : '',
     palaceLines.length ? '九宫简表：' : '',
     ...palaceLines,
+    `同干定位：\n${formatQimenStemLocations(data).join('\n')}`,
     classicPatternLines.length ? `格局索引：\n${classicPatternLines.join('\n')}` : '',
     patternFulfillments.length ? `格局实效：${patternFulfillments.join('；')}` : '',
   ]
@@ -1086,6 +1021,9 @@ function formatLenormandInfo(data: LenormandData) {
   const combinationLines = (data.combinations ?? [])
     .filter((item) => item.source === '固定组合')
     .map((item) => `  ${item.card1}+${item.card2}：${item.meaning}`);
+  const adjacentLines = (data.combinations ?? [])
+    .filter((item) => item.source !== '固定组合')
+    .map((item) => `  ${item.card1}+${item.card2}：${item.meaning}`);
   const evidenceAnalysis = data.evidenceAnalysis?.structuredLayoutFacts
     ? data.evidenceAnalysis
     : analyzeLenormandEvidence(data);
@@ -1099,6 +1037,7 @@ function formatLenormandInfo(data: LenormandData) {
     ...cardLines,
     ...(layoutLines.length ? ['布局关系：', ...layoutLines] : []),
     ...(combinationLines.length ? ['固定组合：', ...combinationLines] : []),
+    ...(adjacentLines.length ? ['相邻合读：', ...adjacentLines] : []),
   ]
     .filter(Boolean)
     .join('\n');

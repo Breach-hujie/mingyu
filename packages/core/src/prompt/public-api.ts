@@ -9,10 +9,13 @@ import { formatBaziForPrompt, type BaziChartResult, type FortuneSelectionContext
 import type { ZiweiRuntime } from '../ziwei/runtime';
 import { formatZiweiFortuneTimeline } from '../ziwei/fortune-timeline';
 import { formatBaziFortuneSelection, formatBaziFullFortune } from './bazi-fortune';
+import { formatBaziTopicFocus } from './bazi';
 import {
   buildSerializableZiweiResult,
   formatZiweiPayloadForPrompt,
   formatZiweiTargetLowerScopeFacts,
+  formatZiweiTopicFocus,
+  formatZiweiSelectedTimeline,
 } from './ziwei';
 import { formatPromptCurrentTime } from './current-time';
 import { buildCustomQuestionTask, buildPromptGuidance, buildPromptTask } from './guidance';
@@ -313,6 +316,7 @@ export function buildBaziPromptForResult(params: {
     buildPromptGuidance('bazi'),
     section('当前时间', formatPromptCurrentTime()),
     section('排盘信息', chart),
+    formatBaziTopicFocus(topic) ? section('主题取用', formatBaziTopicFocus(topic)) : '',
     section('分析对象', scopeText),
     effectiveFortuneScope === 'full'
       ? section('命限资料', formatBaziFullFortune(params.result))
@@ -569,6 +573,7 @@ export function buildPublicZiweiPromptForRuntime(params: {
       ? section('出生时间校正', formatPublicTrueSolarEvidence(params.result.trueSolarEvidence))
       : '',
     section('分析背景', `分析主题：${ZIWEI_TOPIC_LABELS[topic]}\n分析范围：${scopeLabel(scope)}`),
+    formatZiweiTopicFocus(topic) ? section('主题取用', formatZiweiTopicFocus(topic)) : '',
     section(
       '分析对象',
       scope === 'full'
@@ -581,7 +586,7 @@ export function buildPublicZiweiPromptForRuntime(params: {
       : '',
     scope === 'full' ? section('完整运限资料', formatPublicZiweiFullScopeText(params.result)) : '',
     scope !== 'origin' && scope !== 'full' && params.result.fortuneTimeline
-      ? section('运限范围资料', formatZiweiFortuneTimeline(params.result.fortuneTimeline))
+      ? section('运限范围资料', formatZiweiSelectedTimeline(params.result.fortuneTimeline, scope))
       : '',
     params.selection ? section('解读选择', getPromptSelectionSection(params.selection)) : '',
     section('任务', selectedTask),

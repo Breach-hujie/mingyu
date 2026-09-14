@@ -101,6 +101,7 @@ type LifetimeDateParts = ReturnType<typeof parseLifetimePeriodDate>;
 interface LifetimeDateFact {
   date: string;
   dateTime?: string;
+  timestamp?: number;
   ganzhi?: string;
   relation?: string;
 }
@@ -305,6 +306,7 @@ function getLocalTermFact(
   return {
     date: formatLifetimeDate(localTime),
     dateTime: formatLifetimeDateTime(localTime),
+    timestamp: termInstant.getTime(),
   };
 }
 
@@ -325,8 +327,10 @@ function getMonthClashTermFacts(
 }
 
 function getStageIndexForDate(stages: QimenLifetimeStage[], date: string): number | undefined {
-  const matched = stages.find((stage) => stage.calendarStart <= date && stage.calendarEnd >= date);
-  return matched?.stageIndex;
+  const matched = stages.filter(
+    (stage) => stage.calendarStart <= date && stage.calendarEnd >= date,
+  );
+  return matched.length === 1 ? matched[0].stageIndex : undefined;
 }
 
 function collectDailyRelationFacts(
@@ -708,9 +712,33 @@ export function scanLifetimeDynamicEvents(
     }
   }
 
+  // 精确交运模型保留窗口覆盖的每一运；整年或交运日可同时涉及前后两运。
+  if (stages.some((stage) => stage.startDateTime)) {
+    for (const cluster of clusters) {
+      const facts = cluster.triggerDates;
+      const year = Number(cluster.key.split(':')[1]);
+      const rangeStart = [periodRange.startDate, `${year}-01-01`].sort().at(-1)!;
+      const rangeEnd = [periodRange.endDate, `${year}-12-31`].sort()[0];
+      const matching = stages.filter((stage) =>
+        facts?.length
+          ? facts.some((fact) =>
+              fact.timestamp !== undefined && stage.startDateTime && stage.endDateTimeExclusive
+                ? Date.parse(stage.startDateTime) <= fact.timestamp &&
+                  fact.timestamp < Date.parse(stage.endDateTimeExclusive)
+                : stage.calendarStart <= fact.date && stage.calendarEnd >= fact.date,
+            )
+          : stage.calendarStart <= rangeEnd && stage.calendarEnd >= rangeStart,
+      );
+      cluster.stageIndices = matching.map((stage) => stage.stageIndex);
+      cluster.stageIndex = matching.length === 1 ? matching[0].stageIndex : undefined;
+    }
+  }
+
   // 将事件簇 key 反填至 stages
   for (const st of stages) {
-    const matchedKeys = clusters.filter((c) => c.stageIndex === st.stageIndex).map((c) => c.key);
+    const matchedKeys = clusters
+      .filter((c) => c.stageIndex === st.stageIndex || c.stageIndices?.includes(st.stageIndex))
+      .map((c) => c.key);
     if (matchedKeys.length > 0) {
       st.eventClusterKeys = matchedKeys;
     }

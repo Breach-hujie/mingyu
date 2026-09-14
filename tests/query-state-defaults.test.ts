@@ -118,6 +118,32 @@ test('结果页默认应直接打开提示词页', () => {
   assert.equal(defaultPromptState.ziweiScope, 'decadal');
 });
 
+test('奇门终身局分运模型应使用默认值并随结果地址恢复', () => {
+  assert.equal(defaultPromptState.qimenLifetimeStageModel, 'pillarFourLimits');
+
+  const search = buildResultSearch(defaultInputState, {
+    ...defaultPromptState,
+    tab: 'qimen-lifetime',
+    promptSource: 'qimen-lifetime',
+    qimenLifetimeStageModel: 'decadalGanzhi',
+  });
+
+  assert.match(search, /qlsm=decadalGanzhi/);
+  assert.equal(
+    parsePromptState(new URLSearchParams(search)).qimenLifetimeStageModel,
+    'decadalGanzhi',
+  );
+  assert.equal(
+    parsePromptState(new URLSearchParams('qimenLifetimeStageModel=palaceWalk'))
+      .qimenLifetimeStageModel,
+    'palaceWalk',
+  );
+  assert.equal(
+    parsePromptState(new URLSearchParams('qlsm=unknown')).qimenLifetimeStageModel,
+    'pillarFourLimits',
+  );
+});
+
 test('结果页默认紫微提示词状态应与自定义模式一致', () => {
   assert.equal(defaultPromptState.ziweiShortcutMode, '自定义');
   assert.equal(defaultPromptState.ziweiTopic, 'chat');

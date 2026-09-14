@@ -9,6 +9,70 @@ export interface BaziFortuneSelectionSections {
   focus: string;
 }
 
+const EVIDENCE_WEIGHT_LABELS: Record<string, string> = {
+  主证: '主要依据',
+  辅证: '补充依据',
+  反证: '相反迹象',
+  应期: '时间依据',
+  限制: '适用范围',
+};
+
+/**
+ * 岁运选择器的 evidenceLines 同时携带了面向提示词的证据条目和
+ * triggerEvidence.promptText。后者是给 API 追溯用的完整计算记录，不能直接
+ * 进入任务书；这里按证据条目的稳定标题取需要解读的事实，避免靠关键词清洗。
+ */
+const READABLE_FORTUNE_EVIDENCE_TITLES = new Set([
+  '指定年限运限',
+  '上层岁运背景',
+  '大运干支与十神',
+  '流年干支与十神',
+  '流月干支与十神',
+  '流日干支与十神',
+  '刑冲合害触发',
+  '应期边界',
+]);
+
+/** detailGroups 是岁运下钻的固定四层，标题之外的内部分组不进入任务书。 */
+const READABLE_FORTUNE_DETAIL_TITLES = new Set([
+  '该大运包含的流年',
+  '所属大运包含的流年',
+  '该流年包含的流月',
+  '所属流年包含的流月',
+  '该流月包含的流日',
+  '所属流月包含的流日',
+  '该流日包含的流时',
+]);
+
+/**
+ * 岁运选择层已经计算过分级证据；任务书保留权重和事实，但把内部证据
+ * 包装转换成可直接阅读的自然语言，避免暴露来源标签和内部字段。
+ */
+function formatFortuneEvidenceLine(line: string): string | undefined {
+  const segments = line
+    .split('｜')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const head = segments.shift() ?? '';
+  const match = /^【(主证|辅证|反证|应期|限制)】(.+)$/.exec(head);
+  if (!match || !READABLE_FORTUNE_EVIDENCE_TITLES.has(match[2].trim())) return undefined;
+
+  const title = match[2].trim();
+  const details = segments.filter(
+    (item) => !item.startsWith('来源：') && !item.startsWith('标签：'),
+  );
+  return `${EVIDENCE_WEIGHT_LABELS[match[1]] ?? match[1]}（${title}）${
+    details.length ? `：${details.join('；')}` : ''
+  }`;
+}
+
+function formatFortuneEvidenceLines(lines: string[] | undefined) {
+  const formatted = (lines ?? [])
+    .map((line) => formatFortuneEvidenceLine(line))
+    .filter((line): line is string => Boolean(line));
+  return [...new Set(formatted)];
+}
+
 /**
  * 把八字岁运选择结果整理为面向提示词的稳定文本。
  *
@@ -74,16 +138,31 @@ export function formatBaziFortuneSelection(
   const selectedFacts = [
     ...new Set((promptPayload.selectedFacts ?? []).map((line) => line.trim()).filter(Boolean)),
   ];
-  if (selectedFacts.length) lines.push(`所选层关键事实：\n${selectedFacts.join('\n')}`);
+  const evidenceLines = formatFortuneEvidenceLines(promptPayload.evidenceLines);
+  const selectedFactsToRender = selectedFacts.filter(
+    (fact) => !evidenceLines.some((line) => line.includes(fact)),
+  );
+  if (selectedFactsToRender.length) {
+    lines.push(`所选层关键事实：\n${selectedFactsToRender.join('\n')}`);
+  }
+
+  if (evidenceLines.length) lines.push(`岁运取证：\n${evidenceLines.join('\n')}`);
 
   lines.push(...formatTriggerRelations(promptPayload.triggerEvidence));
   const groups = new Map<string, Set<string>>();
   for (const group of promptPayload.detailGroups ?? []) {
-    const entries = groups.get(group.title) ?? new Set<string>();
-    for (const line of group.lines) entries.add(line);
-    if (entries.size) groups.set(group.title, entries);
+    const title = group.title.trim();
+    if (!READABLE_FORTUNE_DETAIL_TITLES.has(title)) continue;
+    const entries = groups.get(title) ?? new Set<string>();
+    for (const line of group.lines) {
+      const value = line.trim();
+      if (value) entries.add(value);
+    }
+    if (entries.size) groups.set(title, entries);
   }
-  for (const [title, entries] of groups) lines.push(`${title}\n${[...entries].join('\n')}`);
+  for (const [title, entries] of groups) {
+    lines.push(`${title}\n${[...entries].join('\n')}`);
+  }
 
   return {
     analysisObject: promptPayload.scopeLabel,
@@ -130,9 +209,20 @@ function formatTriggerRelations(
     );
   }
   if (triggerEvidence?.formations.length) {
-    lines.push(
-      `三合三会：${[...new Set(triggerEvidence.formations.map((item) => item.label))].join('；')}`,
-    );
+    const layersByKey = new Map(triggerEvidence.layers.map((layer) => [layer.key, layer]));
+    const formatLayer = (layer: { label: string; ganZhi: string }) =>
+      layer.label.includes(layer.ganZhi) ? layer.label : `${layer.label}${layer.ganZhi}`;
+    const formationLines = triggerEvidence.formations.map((formation) => {
+      const participants = formation.participantLayerKeys.flatMap((key) => {
+        const layer = layersByKey.get(key);
+        return layer ? [formatLayer(layer)] : [];
+      });
+      const participantText = participants.length
+        ? `参与层级：${[...new Set(participants)].join('、')}`
+        : '参与层级资料未列出';
+      return `${formation.label}（地支：${formation.branches.join('、')}；${participantText}；${formation.interpretationLimit}）`;
+    });
+    lines.push(`三合三会：${[...new Set(formationLines)].join('；')}`);
   }
   return lines;
 }

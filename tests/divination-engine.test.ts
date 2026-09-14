@@ -4149,7 +4149,7 @@ test('太乙神数作为占卜方法应生成完整年计盘与时间层级提�
   assert.doesNotMatch(session.prompt, /结构化证据|证据汇总|计算链|解释限制/);
   assert.match(
     session.prompt,
-    /【任务】\n依据年家局数、太乙、文昌、始击、计神与主客算回答【问题】。/,
+    /【任务】\n依据本次计法与时间层级、局数、太乙、文昌、始击、计神与主客算回答【问题】。/,
   );
   assert.doesNotMatch(session.prompt, /尚未计算|月计、日计或时计/);
   assert.match(
@@ -4436,7 +4436,10 @@ test('诸葛神数与孔明神卦进入统一占问会话并生成完整提示�
   );
   assert.equal(zhuge.method, 'zhuge');
   assert.match(zhuge.prompt, /【占卜信息】/);
-  assert.match(zhuge.prompt, /康熙笔画/);
+  assert.match(zhuge.prompt, /签号：第\d+签/);
+  assert.match(zhuge.prompt, /签诗：/);
+  assert.match(zhuge.prompt, /基础解签：/);
+  assert.doesNotMatch(zhuge.prompt, /康熙笔画|所写三字|【当前时间】/);
   assert.match(zhuge.prompt, /这件事接下来该怎么推进/);
 
   const kongming = await generateDivinationSession(
@@ -4447,11 +4450,10 @@ test('诸葛神数与孔明神卦进入统一占问会话并生成完整提示�
     }),
   );
   assert.equal(kongming.method, 'kongming');
-  assert.match(kongming.prompt, /孔明神卦/);
-  assert.match(kongming.prompt, /五枚硬币/);
-  assert.match(kongming.prompt, /●为正面、阳.*○为反面、阴/);
-  assert.match(kongming.prompt, /诗句取象：目下如冬树/);
-  assert.match(kongming.prompt, /基础解卦：/);
+  assert.match(kongming.prompt, /签号：第\d+签/);
+  assert.match(kongming.prompt, /签题：/);
+  assert.match(kongming.prompt, /基础解签：目下如冬树/);
+  assert.doesNotMatch(kongming.prompt, /五枚硬币|●为正面|【当前时间】/);
   assert.match(kongming.prompt, /补充解释：/);
 
   await assert.rejects(

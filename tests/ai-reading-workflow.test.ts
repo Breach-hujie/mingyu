@@ -1030,6 +1030,9 @@ test('紫微结构化时间线超限时按完整阶段事实逐段解读并汇�
   assert.match(h.sent[1]![0]!.content, /阶段 2\/2/);
   assert.match(h.sent[1]![0]!.content, /流年2001/);
   assert.match(h.sent[2]![0]!.content, /1\/2、2\/2/);
+  // 即使阶段回答省略日期，汇总仍带入原资料的年份、干支和起止边界。
+  assert.match(h.sent[2]![0]!.content, /流年2000 甲子（2000-01-01至2000-12-31）/);
+  assert.match(h.sent[2]![0]!.content, /流年2001 甲子（2001-01-01至2001-12-31）/);
   assert.equal(h.options.memory.resources[0], resource);
   assert.equal(
     h.options.memory.ziweiPhaseReading?.phases.every((item) => item.status === 'succeeded'),
@@ -1159,7 +1162,14 @@ test('真实双人八字紫微全文自然超限时合并相邻运段且完整�
   });
   const phaseCount = h.options.memory.ziweiPhaseReading?.phases.length ?? 0;
   assert.deepEqual(h.errors, []);
-  assert.equal(phaseCount, 2);
+  const periodCount = [primary, partner].reduce(
+    (sum, resource) => sum + (resource.structured.fortuneTimeline?.periods.length ?? 0),
+    0,
+  );
+  assert.ok(
+    phaseCount >= 2 && phaseCount < periodCount,
+    '按实际上下文预算合并相邻运段，并保留双方各自阶段',
+  );
   assert.equal(h.sent.length, phaseCount + 1);
   for (const batch of h.sent) {
     assert.ok(batch.reduce((sum, message) => sum + message.content.length, 0) <= 49_000);

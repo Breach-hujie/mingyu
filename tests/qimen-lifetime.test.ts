@@ -350,7 +350,7 @@ test('奇门终身局 P2：阶段划分引擎（四柱分限 vs 九宫巡行）'
   assert.equal(resultGuaGui.stages.length, 8);
   assert.equal(resultGuaGui.stages[0].calendarEnd, '2000-05-14');
   assert.equal(resultGuaGui.stages[1].calendarStart, '2000-05-15');
-  assert.equal(resultGuaGui.stages[7].ageEnd, 80);
+  assert.equal(resultGuaGui.stages[7].ageEnd, 79);
 
   // 4. 虚岁系统测试
   const resultNominal = calculateQimenLifetime({
@@ -715,6 +715,10 @@ test('奇门终身局 P4：自包含提示词规范、多流派依据与合规�
   );
 
   assert.ok(prompt.length > 500);
+  assert.match(prompt, /换象：/);
+  assert.match(prompt, /造象：/);
+  assert.match(prompt, /同干定位（本命局）：/);
+  assert.match(prompt, /阶段与流年各用本层已列盘面/);
   assert.equal(data.topicCandidates.length, 2, 'topics 过滤应真正生效');
   assert.match(data.basis.timeZoneUsed, /America\/New_York/);
   const currentTimeSection = prompt.split('【传统依据】')[0];

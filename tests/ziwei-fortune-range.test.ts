@@ -9,6 +9,7 @@ import {
 } from 'mingyu-core/ziwei';
 import { buildPublicZiweiPromptForRuntime } from 'mingyu-core/prompt/public-api';
 import {
+  buildZiweiPromptForRuntime,
   formatZiweiFortuneTimelinePhase,
   formatZiweiTargetLowerScopeFacts,
 } from '../packages/core/src/prompt/ziwei';
@@ -684,4 +685,116 @@ test('紫微指定流年跨大限时纳入相交的大限而非只取目标虚�
   assert.ok(boundaryYear);
   assert.equal(boundaryYear.targetMonth?.dateStr, boundaryDate.dateStr);
   assert.equal(boundaryYear.targetMonth?.boundaryFragment, 'previous-year-tail');
+});
+
+test('紫微选定流年提示词按真实窗口保留跨生日或大限的阶段并排除不相交资料', async () => {
+  const cases = [
+    {
+      label: '生日边界',
+      chartInput: {
+        ...input,
+        horoscopeDivide: 'exact' as const,
+        yearDivide: 'exact' as const,
+        ageDivide: 'birthday' as const,
+      },
+      targetContext: { dateStr: '2026-02-10', hourIndex: 4 } as const,
+      expectedRange: ['2026-02-04', '2027-02-03'],
+    },
+    {
+      label: '大限边界',
+      chartInput: {
+        ...input,
+        horoscopeDivide: 'exact' as const,
+        yearDivide: 'exact' as const,
+      },
+      targetContext: { dateStr: '2027-02-05', hourIndex: 4 } as const,
+      expectedRange: ['2027-02-04', '2028-02-03'],
+    },
+  ];
+
+  for (const testCase of cases) {
+    const runtime = await calculateZiweiChart(testCase.chartInput, {
+      scopes: ['origin', 'yearly'],
+      skipAnalysis: true,
+      horoscopeContext: testCase.targetContext,
+      fortuneRange: { scope: 'year', ...testCase.targetContext },
+    });
+    const timeline = runtime.fortuneTimeline;
+    assert.ok(timeline, testCase.label);
+    assert.deepEqual(
+      [timeline.actualStartDateStr, timeline.actualEndDateStr],
+      testCase.expectedRange,
+      testCase.label,
+    );
+
+    const targetYear = timeline.periods
+      .flatMap((period) => period.years)
+      .find(
+        (year) =>
+          year.dateStr <= timeline.targetDateStr &&
+          (year.endDateStr ?? year.dateStr) >= timeline.targetDateStr,
+      );
+    assert.ok(targetYear, testCase.label);
+    assert.equal(targetYear.targetMonth?.dateStr, testCase.targetContext.dateStr, testCase.label);
+
+    const unrelatedPeriod = structuredClone(timeline.periods[0]);
+    assert.ok(unrelatedPeriod, testCase.label);
+    const unrelatedYear = unrelatedPeriod.years[0];
+    assert.ok(unrelatedYear, testCase.label);
+    unrelatedPeriod.label = `不相交${testCase.label}资料`;
+    unrelatedPeriod.startAge = 99;
+    unrelatedPeriod.endAge = 99;
+    unrelatedPeriod.dateStr = '2090-01-01';
+    unrelatedPeriod.endDateStr = '2099-12-31';
+    unrelatedPeriod.years = [
+      {
+        ...unrelatedYear,
+        age: 99,
+        year: 2090,
+        dateStr: '2090-01-01',
+        endDateStr: '2090-12-31',
+        label: '不相交流年',
+        months: undefined,
+        targetMonth: undefined,
+        targetDay: undefined,
+        targetHour: undefined,
+      },
+    ];
+    const prompt = buildZiweiPromptForRuntime({
+      runtime: {
+        ...runtime,
+        fortuneTimeline: {
+          ...timeline,
+          periods: [...timeline.periods, unrelatedPeriod],
+        },
+      },
+      scope: 'year',
+      question: `${testCase.label}目标流年阶段资料`,
+    });
+
+    for (const period of timeline.periods) {
+      assert.ok(prompt.includes(period.label), `${testCase.label}应保留${period.label}`);
+    }
+    const overlappingYears = timeline.periods
+      .flatMap((period) => period.years)
+      .filter(
+        (year) =>
+          year.dateStr <= timeline.actualEndDateStr &&
+          (year.endDateStr ?? year.dateStr) >= timeline.actualStartDateStr,
+      );
+    assert.ok(overlappingYears.length >= 2, `${testCase.label}样本应真实跨越两个阶段`);
+    for (const year of overlappingYears) {
+      assert.ok(prompt.includes(year.dateStr), `${testCase.label}应保留${year.dateStr}起点`);
+      if (year.endDateStr)
+        assert.ok(
+          prompt.includes(year.endDateStr),
+          `${testCase.label}应保留${year.endDateStr}终点`,
+        );
+    }
+    assert.ok(prompt.includes(`${targetYear.age}岁`), `${testCase.label}应保留目标流年`);
+    assert.ok(prompt.includes(`指定流月：`), `${testCase.label}应保留下层流月事实`);
+    assert.ok(prompt.includes(testCase.targetContext.dateStr), `${testCase.label}应保留目标日期`);
+    assert.doesNotMatch(prompt, new RegExp(`不相交${testCase.label}资料`));
+    assert.doesNotMatch(prompt, /2090年|2090-01-01|不相交流年/);
+  }
 });

@@ -768,13 +768,13 @@ export type QimenTopic = (typeof QIMEN_LIFETIME_TOPICS)[number];
 
 /** 奇门终身局阶段引擎策略配置 */
 export interface QimenStagePolicy {
-  /** 阶段划分模型：pillarFourLimits(四柱分限法，默认) | palaceWalk(九宫巡行法) | fuShiHexagramOrbit(符使卦轨法) */
-  model: 'pillarFourLimits' | 'palaceWalk' | 'fuShiHexagramOrbit';
-  /** 阶段起算依据：birthInstant(出生瞬间) | solarTermBoundary(节气边界) | lunarNewYear(立春/农历新年) */
+  /** 阶段划分：四柱分限（默认）、九宫巡行、符使交替十年分段、八字交节起运合参奇门本命宫。 */
+  model: 'pillarFourLimits' | 'palaceWalk' | 'fuShiHexagramOrbit' | 'decadalGanzhi';
+  /** 分段锚点：出生日期、当年立春当地日期或当年农历正月初一。十年干支大运独立按交节起运。 */
   anchorRule?: 'birthInstant' | 'solarTermBoundary' | 'lunarNewYear';
   /** 年龄计算体系：fullYears(周岁，默认) | nominalAge(虚岁) */
   ageSystem?: 'fullYears' | 'nominalAge';
-  /** 每阶段跨度年数（九宫行限时通常为 10 或 15） */
+  /** 九宫行限的每阶段跨度年数；十年干支大运固定为十年。 */
   yearsPerStage?: number;
 }
 
@@ -873,6 +873,11 @@ export interface QimenLifetimeStage {
   /** 实际起止公历日期时间 */
   calendarStart: string;
   calendarEnd: string;
+  /** 精确交运区间，起点包含、终点不包含，ISO 时间含时区偏移。 */
+  startDateTime?: string;
+  endDateTimeExclusive?: string;
+  /** 十年干支大运的本运干支，童限无此字段。 */
+  ganzhi?: string;
   /** 主导宫位列表 */
   dominantPalaces: Array<{ palace: number; name: string }>;
   /** 关联的基础局个人标记 */
@@ -895,12 +900,16 @@ export interface QimenEventCluster {
   key: string;
   /** 归属阶段索引；日期超出已列阶段时为空，仍保留日期关系事实。 */
   stageIndex?: number;
+  /** 时间窗口涉及的全部阶段；交运日按精确交运时刻分段解读。 */
+  stageIndices?: number[];
   /** 时间跨度描述（如 "2027年"） */
   timeSpan: string;
   /** 可复核的日期级触发事实；不包含评分或未计算的日盘结论。 */
   triggerDates?: Array<{
     date: string;
     dateTime?: string;
+    /** 已计算到具体时刻的触发事实，Unix 毫秒；日期级事实省略。 */
+    timestamp?: number;
     ganzhi?: string;
     relation?: string;
   }>;
@@ -961,6 +970,14 @@ export interface QimenLifetimeData {
     method: 'zhuanpan' | 'feipan';
     juMethod: 'chaibu' | 'zhirun';
     stagePolicy: QimenStagePolicy;
+    /** 十年干支大运的起运、顺逆与本命宫定位口径。 */
+    decadalLuck?: {
+      direction: 'forward' | 'backward';
+      startDateTime: string;
+      startAge: { years: number; months: number; days: number; hours: number; minutes: number };
+      rule: string;
+      mapping: string;
+    };
   };
   baseChart: QimenData;
   personalMarkers: QimenPersonalMarker[];

@@ -2623,8 +2623,10 @@ export function getPublicApiOpenApiDocument(
               type: 'object',
               properties: {
                 model: {
-                  enum: ['pillarFourLimits', 'palaceWalk', 'fuShiHexagramOrbit'],
+                  enum: ['pillarFourLimits', 'palaceWalk', 'fuShiHexagramOrbit', 'decadalGanzhi'],
                   default: 'pillarFourLimits',
+                  description:
+                    'decadalGanzhi 为八字交节起运合参奇门本命宫，必须提供 gender；fuShiHexagramOrbit 为符使交替十年分段。',
                 },
                 anchorRule: { enum: ['birthInstant', 'solarTermBoundary', 'lunarNewYear'] },
                 ageSystem: { enum: ['fullYears', 'nominalAge'] },
@@ -5130,6 +5132,23 @@ function readQimenLifetimeTopics(input: JsonRecord): QimenLifetimeInput['topics'
   }
   return input.topics as QimenLifetimeInput['topics'];
 }
+function readQimenLifetimeStagePolicy(input: JsonRecord): QimenLifetimeInput['stagePolicy'] {
+  if (input.stagePolicy === undefined) return undefined;
+  if (!isRecord(input.stagePolicy)) {
+    throw new ApiError(400, 'BAD_REQUEST', 'stagePolicy 必须是阶段配置对象。');
+  }
+  const model = readEnum(
+    input.stagePolicy,
+    'model',
+    ['pillarFourLimits', 'palaceWalk', 'fuShiHexagramOrbit', 'decadalGanzhi'],
+    'pillarFourLimits',
+  ) as NonNullable<QimenLifetimeInput['stagePolicy']>['model'];
+  if (model === 'decadalGanzhi' && input.gender !== 'male' && input.gender !== 'female') {
+    throw new ApiError(400, 'BAD_REQUEST', '十年干支大运需要提供性别，以确定顺逆行。');
+  }
+  return { ...input.stagePolicy, model } as QimenLifetimeInput['stagePolicy'];
+}
+
 function calculateQimenLifetimeApi(input: JsonRecord) {
   assertNoRandomOptions(input, '奇门遁甲是确定性排盘，不接受 seed 或 replay。');
   const birthDateTime = readString(input, 'birthDateTime', '');
@@ -5150,9 +5169,7 @@ function calculateQimenLifetimeApi(input: JsonRecord) {
     applyChinaDst: Boolean(input.applyChinaDst),
     method: readEnum(input, 'method', ['zhuanpan', 'feipan'], 'zhuanpan') as 'zhuanpan' | 'feipan',
     juMethod: readEnum(input, 'juMethod', ['chaibu', 'zhirun'], 'chaibu') as 'chaibu' | 'zhirun',
-    stagePolicy: isRecord(input.stagePolicy)
-      ? (input.stagePolicy as unknown as QimenLifetimeInput['stagePolicy'])
-      : undefined,
+    stagePolicy: readQimenLifetimeStagePolicy(input),
     periodRange: readQimenLifetimePeriodRange(input),
     topics: readQimenLifetimeTopics(input),
     name: typeof input.name === 'string' ? input.name : undefined,
@@ -5204,6 +5221,10 @@ function buildCompactQimenLifetimeResult(result: QimenLifetimeData) {
       ageEnd: st.ageEnd,
       calendarStart: st.calendarStart,
       calendarEnd: st.calendarEnd,
+      ...(st.startDateTime
+        ? { startDateTime: st.startDateTime, endDateTimeExclusive: st.endDateTimeExclusive }
+        : {}),
+      ...(st.ganzhi ? { ganzhi: st.ganzhi, associatedMarkers: st.associatedMarkers } : {}),
       dominantPalaces: st.dominantPalaces,
       stageTheme: st.stageTheme,
       supportFacts: st.supportFacts,
@@ -5237,9 +5258,7 @@ function buildQimenLifetimePromptResult(input: JsonRecord) {
     applyChinaDst: Boolean(input.applyChinaDst),
     method: readEnum(input, 'method', ['zhuanpan', 'feipan'], 'zhuanpan') as 'zhuanpan' | 'feipan',
     juMethod: readEnum(input, 'juMethod', ['chaibu', 'zhirun'], 'chaibu') as 'chaibu' | 'zhirun',
-    stagePolicy: isRecord(input.stagePolicy)
-      ? (input.stagePolicy as unknown as QimenLifetimeInput['stagePolicy'])
-      : undefined,
+    stagePolicy: readQimenLifetimeStagePolicy(input),
     periodRange: readQimenLifetimePeriodRange(input),
     topics: readQimenLifetimeTopics(input),
     name: typeof input.name === 'string' ? input.name : undefined,

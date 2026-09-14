@@ -1,6 +1,23 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { extractDivinationPromptFacts } from './prompt-audit/divination-facts';
+import {
+  auditPromptFacts,
+  assertPromptFactCoverage,
+  type PromptFactExpectation,
+} from './prompt-audit/facts';
+import {
+  extractAstrolabeFacts,
+  extractAstrolabeSynastryFacts,
+  extractBaziCompatibilityFacts,
+  extractBaziFacts,
+  extractQizhengFacts,
+  extractZiweiCompatibilityFacts,
+  extractZiweiFacts,
+} from './prompt-audit/natal-facts';
 
 import { calculateFullZiweiChart, buildZiweiChartInput } from '../src/lib/full-chart-engine/ziwei';
 import {
@@ -35,6 +52,8 @@ import { buildAstrolabeScopeContext } from '../src/lib/astrolabe-scope';
 import { drawRandomSign } from 'mingyu-core/divination/ssgw';
 import { drawSpreadCards, getCardEvidence } from 'mingyu-core/divination/tarot';
 import { baziCalculator } from '@core/bazi/baziCalculator';
+import { analyzeBaziCompatibility } from '@core/bazi';
+import { analyzeZiweiCompatibility } from 'mingyu-core/ziwei/iztro';
 import { analyzeBaZhai } from '@core/ba_zhai';
 import { generateResidentialFengshui } from '@core/residential_fengshui';
 import { generateXuanKong } from '@core/xuan_kong';
@@ -56,6 +75,7 @@ type PromptSample = {
   source: string;
   prompt: string;
   notes: string[];
+  facts?: PromptFactExpectation[];
 };
 
 type RequiredSampleFields = {
@@ -83,6 +103,27 @@ function getAuditSourceRevision() {
     );
   } catch {
     return '未获取';
+  }
+}
+
+function getAuditWorkingTreeEvidence() {
+  try {
+    const diff = execFileSync('git', ['diff', '--binary', 'HEAD'], { maxBuffer: 32 * 1024 * 1024 });
+    const untracked = execFileSync('git', ['ls-files', '--others', '--exclude-standard'], {
+      encoding: 'utf8',
+    })
+      .trim()
+      .split(/\r?\n/u)
+      .filter((path) => /^(?:src|packages\/core|skills\/mingyu|scripts|tests)\//u.test(path));
+    const hash = createHash('sha256').update(diff);
+    for (const path of untracked.sort()) hash.update(path).update(readFileSync(path));
+    return {
+      dirty: diff.length > 0 || untracked.length > 0,
+      deltaSha256: hash.digest('hex'),
+      untrackedFiles: untracked.length,
+    };
+  } catch {
+    return { dirty: null, deltaSha256: null, untrackedFiles: null };
   }
 }
 
@@ -365,12 +406,8 @@ async function withFixedNow<T>(date: Date, callback: () => Promise<T>): Promise<
   const fixedTime = date.getTime();
 
   class FixedDate extends RealDate {
-    constructor(...args: ConstructorParameters<DateConstructor>) {
-      if (args.length === 0) {
-        super(fixedTime);
-      } else {
-        super(...args);
-      }
+    constructor(...args: unknown[]) {
+      super(args.length ? Reflect.construct(RealDate, args).getTime() : fixedTime);
     }
 
     static now() {
@@ -431,6 +468,7 @@ function buildPromptMarkdown(samples: PromptSample[]) {
     `执行时间：${new Date().toISOString()}`,
     `固定测试时刻：${AUDIT_DATE_TEXT}`,
     `源码版本：${getAuditSourceRevision()}`,
+    `工作树证据：${JSON.stringify(getAuditWorkingTreeEvidence())}`,
     '',
     '说明：本文件由项目本地函数真实生成，覆盖八字排盘、紫微斗数、星盘、七政四余、六爻（含蓍草十八变）、梅花易数、奇门遁甲（含终身局）、大六壬、塔罗牌、三山国王灵签、择日、八宅风水、住宅风水、玄空飞星、太乙神数及运限、主题分支。八字、紫微斗数、星盘测试资料取自比赛原题公开出生信息，未读取正确答案文件。',
     '',
@@ -456,6 +494,11 @@ function buildPromptMarkdown(samples: PromptSample[]) {
     lines.push(`输入摘要：${sample.inputSummary}`);
     lines.push('');
     lines.push(`提示词长度：${sample.prompt.length} 字符`);
+    const factAudit = auditPromptFacts(sample.prompt, sample.facts ?? []);
+    lines.push(
+      `事实覆盖：${factAudit.present}/${factAudit.expected}；缺失 ${factAudit.missing.length}；重复事实 ${factAudit.repeated.length}。`,
+    );
+    if (factAudit.missing.length) lines.push(`缺失事实：${factAudit.missing.join('、')}`);
     lines.push('');
     lines.push(`识别到的 section：${uniqueSectionNames(sample.prompt).join('、') || '无'}`);
     lines.push('');
@@ -738,7 +781,7 @@ function assertSamplePromptsAreClean(samples: PromptSample[]) {
   }
 }
 
-async function buildSamples(): Promise<PromptSample[]> {
+export async function buildSamples(): Promise<PromptSample[]> {
   const fixedNow = AUDIT_DATE;
 
   return withFixedNow(fixedNow, async () => {
@@ -818,7 +861,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         year: '2026',
         month: '5',
         day: '19',
-        timeIndex: '5',
+        timeIndex: 5,
         isLeapMonth: false,
         useTrueSolarTime: false,
       }),
@@ -1073,6 +1116,7 @@ async function buildSamples(): Promise<PromptSample[]> {
       const result = generateTaiyi({ scope, date: taiyiDate });
       return {
         name: `太乙神数（${label}）`,
+        facts: extractDivinationPromptFacts('taiyi', result),
         source: `项目太乙${label}算法真实生成；起局时间 2026-07-11T14:35:00+08:00。`,
         inputSummary: `太乙${label}；问题为2026年7月11日14时35分起局的攻守与行动时宜。`,
         prompt: buildMetaphysicsPrompt(
@@ -1126,7 +1170,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         year: '1995',
         month: '5',
         day: '20',
-        timeIndex: '4',
+        timeIndex: 4,
         isLeapMonth: false,
         useTrueSolarTime: false,
       }),
@@ -1144,12 +1188,28 @@ async function buildSamples(): Promise<PromptSample[]> {
       timezone: '8',
       locationName: '北京',
     });
+    const baziCompatibility = analyzeBaziCompatibility(baziResult, partnerBazi);
+    const ziweiCompatibility = analyzeZiweiCompatibility(
+      ziweiRuntime.payloadByScope.origin,
+      partnerZiwei.payloadByScope.origin,
+    );
+    const astrolabeSynastry = analyzeAstrolabeSynastry(contestAstrolabe, partnerAstrolabe);
+    const instantQizhengData = qizheng.generateQizheng({
+      year: 2026,
+      month: 5,
+      day: 19,
+      hour: 10,
+      minute: 30,
+      latitude: 39.9,
+      longitude: 116.4,
+      timezone: 8,
+    });
     const extraSamples = {
       baziCompatibility: buildBaziCompatibilityPrompt({
         result1: baziResult,
         result2: partnerBazi,
         question: '我们长期合作时最需要注意什么？',
-        compatibilityType: 'partnership',
+        compatibilityType: 'career',
         currentTime: fixedNow,
       }),
       ziweiCompatibility: buildZiweiCompatibilityPrompt({
@@ -1161,7 +1221,7 @@ async function buildSamples(): Promise<PromptSample[]> {
       astrolabeSynastry: buildAstrolabeSynastryPrompt({
         chart1: contestAstrolabe,
         chart2: partnerAstrolabe,
-        synastry: analyzeAstrolabeSynastry(contestAstrolabe, partnerAstrolabe),
+        synastry: astrolabeSynastry,
         question: '双方合作时最需要注意什么？',
         currentTime: fixedNow,
       }),
@@ -1193,16 +1253,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         AUDIT_DATE_TEXT,
       ),
       instantQizheng: buildInstantQizhengPrompt(
-        qizheng.generateQizheng({
-          year: 2026,
-          month: 5,
-          day: 19,
-          hour: 10,
-          minute: 30,
-          latitude: 39.9,
-          longitude: 116.4,
-          timezone: 8,
-        }),
+        instantQizhengData,
         COMMON_PROJECT_QUESTION,
         AUDIT_DATE_TEXT,
       ),
@@ -1238,6 +1289,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: CONTEST_SOURCE,
         inputSummary: `命例一：坤造，广东出生，西历 1951年11月14日巳时；问题聚焦1993年；已选择 ${baziFortuneContext?.displayText ?? '本命范围'}。`,
         prompt: baziPrompt,
+        facts: extractBaziFacts(baziResult, baziFortuneContext),
         notes: [
           '原题未给广东具体城市，因此本次八字样本未启用真太阳时。',
           baziFortuneContext
@@ -1251,6 +1303,12 @@ async function buildSamples(): Promise<PromptSample[]> {
         inputSummary:
           '命例四：男命，西元 1993年4月8日 23:34，新加坡出生；按经度 103.8198 启用紫微真太阳时；问题聚焦本命结构。',
         prompt: ziweiPrompt,
+        facts: extractZiweiFacts(ziweiRuntime.payloadByScope.origin, {
+          scope: { start: '【本命资料】', end: '【任务】' },
+          payloadScopes: ['origin'],
+          palaceValueStyle: 'public',
+          mutagenValueStyle: 'public',
+        }),
         notes: ['使用本命范围生成，问题与当前分析对象一致。'],
       },
       {
@@ -1258,6 +1316,9 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: CONTEST_SOURCE,
         inputSummary: `命例四：男命，西元 1993年4月8日 23:34，新加坡出生；纬度 1.3521，经度 103.8198，UTC+8；已选择 ${astrolabeScope.displayText}。`,
         prompt: astrolabePrompt,
+        facts: extractAstrolabeFacts(contestAstrolabe, astrolabeScope, {
+          scope: { start: '【占卜信息】', end: '【任务】' },
+        }),
         notes: [
           '星盘样本通过项目年限选择逻辑写入流年分析对象和行运相位证据。',
           '当前已生成行运到本命相位、太阳返照近似时刻、次限推进与太阳弧证据。',
@@ -1269,6 +1330,7 @@ async function buildSamples(): Promise<PromptSample[]> {
           '项目七政四余算法真实生成；西历 1993年4月8日 23:34，新加坡，经度 103.8198，纬度 1.3521，UTC+8。',
         inputSummary: '西历 1993年4月8日 23:34，新加坡出生；问题为本命结构。',
         prompt: qizhengPrompt,
+        facts: extractQizhengFacts(qizhengData),
         notes: [
           '七政、罗计、月孛采用现代天文位置，紫炁采用《七政算内篇》均速模型。',
           '二十八宿采用目标日期真实距星黄经边界。',
@@ -1279,6 +1341,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '项目七政四余算法真实生成；西历 1993年4月8日 23:34，新加坡；流年 2022 年 6 月。',
         inputSummary: '本命西历 1993年4月8日 23:34；男命；流年 2022 年 6 月。',
         prompt: qizhengPeriodPrompt,
+        facts: extractQizhengFacts(qizhengPeriodData),
         notes: ['行限按命宫起大限小限；流曜周期扫描该月换宫、停逆与精确吊照。'],
       },
       {
@@ -1286,6 +1349,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '项目算法真实时间起卦；固定时间 2026-05-19T10:30:00+08:00。',
         inputSummary: buildCommonProjectInputSummary('模板：事业断卦'),
         prompt: liuyaoPrompt,
+        facts: extractDivinationPromptFacts('liuyao', liuyaoData),
         notes: [],
       },
       {
@@ -1293,6 +1357,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '项目算法真实蓍草十八变起卦；固定随机种子“审查蓍草十八变”。',
         inputSummary: buildCommonProjectInputSummary('蓍草十八变；模板：事业断卦'),
         prompt: yarrowLiuyaoPrompt,
+        facts: extractDivinationPromptFacts('liuyao', yarrowLiuyaoData),
         notes: ['保留蓍草分堆记录与起卦方式，供外部解读核对。'],
       },
       {
@@ -1300,6 +1365,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '项目算法真实起卦；固定时间 2026-05-19T10:30:00+08:00；数字起卦 42。',
         inputSummary: buildCommonProjectInputSummary('焦点：决策；数字起卦 42'),
         prompt: meihuaPrompt,
+        facts: extractDivinationPromptFacts('meihua', meihuaData),
         notes: [],
       },
       {
@@ -1307,6 +1373,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '项目算法真实排盘；固定时间 2026-05-19T10:30:00+08:00。',
         inputSummary: buildCommonProjectInputSummary('焦点：策略'),
         prompt: qimenPrompt,
+        facts: extractDivinationPromptFacts('qimen', qimenData),
         notes: ['本次直接调用核心提示词生成函数，使用了页面侧支持的 qimenFocus。'],
       },
       {
@@ -1315,6 +1382,7 @@ async function buildSamples(): Promise<PromptSample[]> {
           '项目奇门终身局真实排盘与阶段扫描；出生时刻 1990-05-15T14:30:00，Asia/Shanghai，北京；阶段范围 2026—2035 年。',
         inputSummary: '男，1990年5月15日14:30，北京；主题为事业与财富；问题为未来十年的阶段变化。',
         prompt: qimenLifetimePrompt.prompt,
+        facts: extractDivinationPromptFacts('qimen-lifetime', qimenLifetimePrompt.data),
         notes: ['同时覆盖终身基础局、主题宫、人生阶段和周期触发资料。'],
       },
       {
@@ -1322,6 +1390,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '项目算法真实排盘；固定时间 2026-05-19T10:30:00+08:00。',
         inputSummary: buildCommonProjectInputSummary('模板：事业断课'),
         prompt: liurenPrompt,
+        facts: extractDivinationPromptFacts('liuren', liurenData),
         notes: [],
       },
       {
@@ -1329,6 +1398,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '项目小六壬时间课真实生成；固定时间 2026-05-19T10:30:00+08:00。',
         inputSummary: buildCommonProjectInputSummary('时间起课'),
         prompt: xiaoliurenPrompt,
+        facts: extractDivinationPromptFacts('xiaoliuren', xiaoliurenData),
         notes: [],
       },
       {
@@ -1336,6 +1406,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '项目金口诀时间课真实生成；固定时间 2026-05-19T10:30:00+08:00。',
         inputSummary: buildCommonProjectInputSummary('时间起课'),
         prompt: jinkoujuePrompt,
+        facts: extractDivinationPromptFacts('jinkoujue', jinkoujueData),
         notes: [],
       },
       {
@@ -1343,6 +1414,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '项目牌组真实抽牌；固定随机种子 20260519；决策牌阵。',
         inputSummary: buildCommonProjectInputSummary('牌阵：决策'),
         prompt: tarotPrompt,
+        facts: extractDivinationPromptFacts('tarot', tarotData),
         notes: [],
       },
       {
@@ -1350,6 +1422,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '项目牌组真实抽牌；固定随机种子 20260520；五牌十字阵。',
         inputSummary: buildCommonProjectInputSummary('牌阵：五牌十字阵'),
         prompt: lenormandPrompt,
+        facts: extractDivinationPromptFacts('lenormand', lenormandData),
         notes: [],
       },
       {
@@ -1357,6 +1430,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '项目签文库真实抽签；固定随机种子 20260521。',
         inputSummary: buildCommonProjectInputSummary('随机抽签'),
         prompt: ssgwPrompt,
+        facts: extractDivinationPromptFacts('ssgw', ssgwData),
         notes: [],
       },
       {
@@ -1364,6 +1438,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '项目黄历择日算法真实生成；日期范围 2026-06-01 至 2026-06-15。',
         inputSummary: '事项：签署项目合作合同；参与人：项目负责人，男，1990年5月15日午时，公历。',
         prompt: almanacPrompt,
+        facts: extractDivinationPromptFacts('almanac', almanacData),
         notes: [],
       },
       {
@@ -1371,6 +1446,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '项目八宅大游年算法真实生成；命卦和宅卦均输出完整八宫。',
         inputSummary: '男，1990年6月15日生；坐山为子山；问题为住宅大门、卧室和书房方位安排。',
         prompt: bazhaiPrompt,
+        facts: extractDivinationPromptFacts('bazhai', bazhaiData),
         notes: ['本样本只有坐山和命卦资料，未假定具体户型、门窗、灶厕或外部形峦。'],
       },
       {
@@ -1378,6 +1454,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '项目住宅风水统一入口真实生成；八宅与玄空分层并列，不合成总分。',
         inputSummary: '男，1990年6月15日生；建造/起运年 2024；门向 0°；问题为宅运与人宅关系。',
         prompt: residentialPrompt,
+        facts: extractDivinationPromptFacts('residential', residentialData),
         notes: ['统一入口样本展示八宅与玄空分层合参，不代表装修吉凶保证。'],
       },
       {
@@ -1385,6 +1462,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '项目玄空飞星 v1 算法真实生成；输出运盘、山盘、向盘与到山到向。',
         inputSummary: '建造/起运年 2024；朝向 0°；问题为飞星结构与重点宫位。',
         prompt: xuankongPrompt,
+        facts: extractDivinationPromptFacts('xuankong', xuankongData),
         notes: ['当前样本只审计飞星盘面结构，不扩展形峦或全流派替卦。'],
       },
       {
@@ -1392,6 +1470,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '项目太乙年计七十二局立成真实生成；展示 2026 年年计，并另审月、日、时三种计式。',
         inputSummary: '2026年太乙年计；问题为本年度的攻守与行动时宜。',
         prompt: taiyiPrompt,
+        facts: extractDivinationPromptFacts('taiyi', taiyiData),
         notes: ['年、月、日、时四计分别生成真实样本。'],
       },
       ...taiyiVariantSamples,
@@ -1400,6 +1479,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '项目五运六气算法真实生成；公历 2026 年。',
         inputSummary: '2026年年度运气结构；问题为本年运气节律重点。',
         prompt: wuyunLiuqiData.prompt,
+        facts: extractDivinationPromptFacts('wuyun-liuqi', wuyunLiuqiData),
         notes: [],
       },
       {
@@ -1407,6 +1487,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '项目皇极经世元会运世周期算法真实生成；纪元坐标 1，目标年坐标 2026。',
         inputSummary: '纪元第一年坐标为1，目标年坐标为2026；问题为周期位置。',
         prompt: huangjiJingshiData.prompt,
+        facts: extractDivinationPromptFacts('huangji', huangjiJingshiData),
         notes: [],
       },
       {
@@ -1414,6 +1495,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '项目皇极经世通行公元值年卦真实生成；目标年 2026。',
         inputSummary: '公元2026年；问题为通行值年卦与周期位置。',
         prompt: huangjiStandardData.prompt,
+        facts: extractDivinationPromptFacts('huangji', huangjiStandardData),
         notes: [],
       },
       {
@@ -1421,6 +1503,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '项目皇极经世年月日时盘真实生成；起局时间 2026-07-11T14:35:00+08:00。',
         inputSummary: '2026年7月11日14:35；问题为年月日时盘层级关系。',
         prompt: huangjiDateTimeData.prompt,
+        facts: extractDivinationPromptFacts('huangji', huangjiDateTimeData),
         notes: [],
       },
       {
@@ -1428,6 +1511,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '项目生肖流年算法真实生成；午生肖，2026丙午年。',
         inputSummary: '生肖午（马）；流年2026；问题为重点流年关系。',
         prompt: zodiacPrompt,
+        facts: extractDivinationPromptFacts('zodiac', zodiacData),
         notes: [],
       },
       {
@@ -1435,6 +1519,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '项目八字合盘算法真实生成。',
         inputSummary: '双方公历出生资料；问题为长期合作需要注意什么。',
         prompt: extraSamples.baziCompatibility,
+        facts: extractBaziCompatibilityFacts(baziResult, partnerBazi, baziCompatibility),
         notes: [],
       },
       {
@@ -1442,6 +1527,11 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '项目紫微合盘算法真实生成。',
         inputSummary: '双方紫微本命盘；问题为关系互动主轴。',
         prompt: extraSamples.ziweiCompatibility,
+        facts: extractZiweiCompatibilityFacts(
+          ziweiRuntime.payloadByScope.origin,
+          partnerZiwei.payloadByScope.origin,
+          ziweiCompatibility,
+        ),
         notes: [],
       },
       {
@@ -1449,6 +1539,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '项目西洋占星合盘算法真实生成。',
         inputSummary: '双方星盘；问题为合作互动。',
         prompt: extraSamples.astrolabeSynastry,
+        facts: extractAstrolabeSynastryFacts(contestAstrolabe, partnerAstrolabe, astrolabeSynastry),
         notes: [],
       },
       {
@@ -1457,6 +1548,19 @@ async function buildSamples(): Promise<PromptSample[]> {
           '项目八字紫微合参提示词真实生成；同一命例为 1993-04-08，新加坡 23:34，八字采用晚子时。',
         inputSummary: '同一命例：公历 1993年4月8日；八字晚子时与紫微 23:34 新加坡本命盘。',
         prompt: extraSamples.baziZiwei,
+        facts: [
+          ...extractBaziFacts(samePersonBazi, null, {
+            scope: { start: '【八字排盘信息】', end: '【紫微盘面信息】' },
+            idPrefix: 'bazi.combined',
+          }),
+          ...extractZiweiFacts(ziweiRuntime.payloadByScope.origin, {
+            scope: { start: '【紫微盘面信息】', end: '【任务】' },
+            payloadScopes: ['origin'],
+            idPrefix: 'ziwei.combined',
+            palaceValueStyle: 'public',
+            mutagenValueStyle: 'public',
+          }),
+        ],
         notes: [],
       },
       {
@@ -1465,6 +1569,7 @@ async function buildSamples(): Promise<PromptSample[]> {
         inputSummary:
           '命例一：坤造，西历 1951年11月14日巳时；主题为事业；问题聚焦事业方向与阶段选择。',
         prompt: baziCareerPrompt,
+        facts: extractBaziFacts(baziResult, baziFortuneContext),
         notes: ['验证主题任务与实际岁运资料同时存在时的任务分支。'],
       },
       {
@@ -1473,6 +1578,13 @@ async function buildSamples(): Promise<PromptSample[]> {
           '项目紫微流年提示词真实生成；同一命例为 1993-04-08，新加坡 23:34；固定审查时刻用于流年层。',
         inputSummary: '男命，西元 1993年4月8日23:34，新加坡；范围为流年；主题为事业与财务。',
         prompt: ziweiYearlyPrompt,
+        facts: extractZiweiFacts(ziweiRuntime.payloadByScope.yearly, {
+          scope: { start: '【本命资料】', end: '【任务】' },
+          payloadScopes: ['yearly'],
+          activeFactStyle: 'public',
+          palaceValueStyle: 'public',
+          mutagenValueStyle: 'public',
+        }),
         notes: ['验证流年范围不是本命资料的误标，并保留所选运限事实。'],
       },
       {
@@ -1480,6 +1592,12 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '即时盘提示词真实生成；事件时刻 2026-05-19T10:30:00+08:00，北京。',
         inputSummary: '2026年5月19日10时30分（北京时间）八字事件盘，采用巳时。',
         prompt: extraSamples.instantBazi,
+        facts: extractBaziFacts(instantBaziResult, null, {
+          scope: { start: '【盘面资料】', end: '【任务】' },
+          includeUsefulGod: false,
+          idPrefix: 'bazi.instant',
+          format: 'instant',
+        }),
         notes: [],
       },
       {
@@ -1487,6 +1605,15 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '即时盘提示词真实生成；事件时刻 2026-05-19T10:30:00+08:00，北京。',
         inputSummary: '2026年5月19日10时30分（北京时间）紫微事件盘，采用巳时。',
         prompt: extraSamples.instantZiwei,
+        facts: extractZiweiFacts(instantZiweiRuntime.payloadByScope.origin, {
+          scope: { start: '【盘面资料】', end: '【任务】' },
+          payloadScopes: ['origin'],
+          includeActiveFacts: false,
+          includeMutagenFacts: false,
+          palaceValueStyle: 'public',
+          starValuePrefix: false,
+          idPrefix: 'ziwei.instant',
+        }),
         notes: [],
       },
       {
@@ -1494,6 +1621,23 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '即时盘提示词真实生成；事件时刻 2026-05-19T10:30:00+08:00，北京。',
         inputSummary: '同一 2026年5月19日10时30分（北京时间）八字与紫微事件盘。',
         prompt: extraSamples.instantCombined,
+        facts: [
+          ...extractBaziFacts(instantBaziResult, null, {
+            scope: { start: '【八字盘】', end: '【紫微盘】' },
+            includeUsefulGod: false,
+            idPrefix: 'bazi.instant-combined',
+            format: 'instant',
+          }),
+          ...extractZiweiFacts(instantZiweiRuntime.payloadByScope.origin, {
+            scope: { start: '【紫微盘】', end: '【任务】' },
+            payloadScopes: ['origin'],
+            includeActiveFacts: false,
+            includeMutagenFacts: false,
+            palaceValueStyle: 'public',
+            starValuePrefix: false,
+            idPrefix: 'ziwei.instant-combined',
+          }),
+        ],
         notes: [],
       },
       {
@@ -1501,6 +1645,11 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '即时盘提示词真实生成；事件时刻 2026-05-19T10:30:00+08:00，北京。',
         inputSummary: '2026年5月19日10时30分（北京时间）北京星盘事件盘。',
         prompt: extraSamples.instantAstrolabe,
+        facts: extractAstrolabeFacts(instantAstrolabe, null, {
+          scope: { start: '【盘面资料】', end: '【任务】' },
+          includeHouses: false,
+          idPrefix: 'astrolabe.instant',
+        }),
         notes: [],
       },
       {
@@ -1512,6 +1661,11 @@ async function buildSamples(): Promise<PromptSample[]> {
           COMMON_PROJECT_QUESTION,
           CROSS_TIMEZONE_AUDIT_DATE_TEXT,
         ),
+        facts: extractAstrolabeFacts(crossTimezoneAstrolabe, null, {
+          scope: { start: '【盘面资料】', end: '【任务】' },
+          includeHouses: false,
+          idPrefix: 'astrolabe.instant-cross-timezone',
+        }),
         notes: ['专门核验绝对时刻、当地墙上日期、时区和盘面输入不互相错位。'],
       },
       {
@@ -1519,6 +1673,10 @@ async function buildSamples(): Promise<PromptSample[]> {
         source: '即时盘提示词真实生成；事件时刻 2026-05-19T10:30:00+08:00，北京。',
         inputSummary: '2026年5月19日10时30分（北京时间）七政四余事件盘。',
         prompt: extraSamples.instantQizheng,
+        facts: extractQizhengFacts(instantQizhengData, {
+          scope: { start: '【盘面资料】', end: '【任务】' },
+          idPrefix: 'qizheng.instant',
+        }),
         notes: [],
       },
     ];
@@ -1538,7 +1696,31 @@ async function main() {
 
   writeFileSync(samplePath, buildPromptMarkdown(samples), 'utf8');
 
+  const factPath = resolve(outputDir, 'prompt-fact-coverage.json');
+  const coverage = samples.map((sample) => ({
+    name: sample.name,
+    characters: sample.prompt.length,
+    ...auditPromptFacts(sample.prompt, sample.facts ?? []),
+  }));
+  writeFileSync(
+    factPath,
+    JSON.stringify(
+      {
+        revision: getAuditSourceRevision(),
+        workingTree: getAuditWorkingTreeEvidence(),
+        generatedAt: new Date().toISOString(),
+        samples: coverage,
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
+  assertPromptFactCoverage(samples.map((sample) => ({ ...sample, facts: sample.facts ?? [] })));
+
   console.log(`已生成：${samplePath}`);
+  console.log(`事实覆盖：${factPath}`);
 }
 
-await main();
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href)
+  await main();

@@ -32,6 +32,24 @@ export function verifyReadingAnswer(
   if (pillars.length === 4 && new Set(pillars.map((item) => item[1])).size === 4) {
     const known = new Map(pillars.map((item) => [item[1], [item[2], item[3]]]));
     for (const match of text.matchAll(
+      new RegExp(`([年月日时])柱(?:(?:的)?干支)?(?:为|是)?[：:]?([${STEMS}][${BRANCHES}])`, 'gu'),
+    )) {
+      const preceding = text.slice(Math.max(0, match.index! - 50), match.index);
+      const clause = preceding.split(/[。；;！？!?，,\n]/u).at(-1) ?? '';
+      if (/(?:假如|假设|如果|例如|举例|比如|若)/u.test(clause)) continue;
+      const context = `${preceding}${match[1]}`;
+      if (
+        /(?:流年|流月|流日|流时|大运|岁运|行运|今年|去年|明年|前年|来年|\d{4}年)[^。；;！？!?，,\n]{0,40}$/u.test(
+          context,
+        ) &&
+        !/(?:原局|本命|出生)[^。；]{0,20}$/u.test(preceding)
+      )
+        continue;
+      const expected = known.get(match[1])?.join('');
+      if (expected && expected !== match[2] && !isNegated(match.index!, match[0].length))
+        issues.add(`原局${match[1]}柱为${expected}，回答写为${match[2]}。`);
+    }
+    for (const match of text.matchAll(
       new RegExp(`([年月日时])(?:柱)?(?:天|地)?(干|支)(?:为|是|：)?([${STEMS}${BRANCHES}])`, 'gu'),
     )) {
       const preceding = text.slice(Math.max(0, match.index! - 50), match.index);

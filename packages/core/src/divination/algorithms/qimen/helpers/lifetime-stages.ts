@@ -11,25 +11,58 @@ import type {
   QimenTopicCandidate,
 } from '../../../../types/divination';
 import type { CivilDateTimeParts } from '../../../../calendar/civil-time';
-import { createUtcTimestamp } from '../../../../calendar/date-validation';
+import {
+  DEFAULT_CHINA_TIMEZONE_HOURS,
+  getCivilDateTimeAtFixedOffset,
+} from '../../../../calendar/civil-time';
+import { createUtcTimestamp, daysInGregorianMonth } from '../../../../calendar/date-validation';
+import { getHistoricalTimezoneOffsetAt } from '../../../../calendar/historical-timezone';
+import { toNativeDate, toSolarDateTimeInfo } from '../../../../bazi/luckTiming';
 import { diPanPalaces } from './_constants';
 import { getDunJiaStem } from './jushu';
+import { LunarYear, SolarTerm } from 'tyme4ts';
 
 const CLOCKWISE_OUTER_PALACES = [1, 8, 3, 4, 9, 2, 7, 6];
 const COUNTER_CLOCKWISE_OUTER_PALACES = [1, 6, 7, 2, 9, 4, 3, 8];
 
 const YANG_STEMS = ['甲', '丙', '戊', '庚', '壬'];
 
+export interface QimenLifetimeStageTimeContext {
+  /** IANA 时区；提供后按目标节气瞬时点读取当地历史偏移。 */
+  timeZoneId?: string;
+  /** 固定 UTC 偏移，单位为小时。 */
+  timezone?: number;
+  /** 未提供 IANA 或固定时区时的回退偏移，单位为分钟。 */
+  fallbackOffsetMinutes?: number;
+}
+
 function addYearsToCivilDate(date: CivilDateTimeParts, years: number): string {
-  const d = new Date(Date.UTC(date.year, date.month - 1, date.day));
-  d.setUTCFullYear(d.getUTCFullYear() + years);
-  return d.toISOString().split('T')[0];
+  const targetYear = date.year + years;
+  // 生日为 2 月 29 日时，周年边界夹在目标年份二月末，不能由 Date 溢出到 3 月 1 日。
+  const targetDay = Math.min(date.day, daysInGregorianMonth(targetYear, date.month));
+  return `${String(targetYear).padStart(4, '0')}-${String(date.month).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
 }
 
 function subtractOneCivilDay(value: string): string {
   const [year, month, day] = value.split('-').map(Number);
   const date = new Date(createUtcTimestamp(year, month - 1, day) - 86400000);
   return `${String(date.getUTCFullYear()).padStart(4, '0')}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+}
+
+function getAnchorOffsetHours(
+  instant: Date,
+  timeContext: QimenLifetimeStageTimeContext | undefined,
+): number {
+  if (timeContext?.timeZoneId?.trim()) {
+    return getHistoricalTimezoneOffsetAt(instant, timeContext.timeZoneId.trim());
+  }
+  if (timeContext?.timezone !== undefined) {
+    return timeContext.timezone;
+  }
+  if (timeContext?.fallbackOffsetMinutes !== undefined) {
+    return timeContext.fallbackOffsetMinutes / 60;
+  }
+  return DEFAULT_CHINA_TIMEZONE_HOURS;
 }
 
 /**
@@ -95,6 +128,7 @@ function getAnchorBaseDate(
   birthDate: Date,
   anchorRule: QimenStagePolicy['anchorRule'] | undefined,
   birthCivilDate?: CivilDateTimeParts,
+  timeContext?: QimenLifetimeStageTimeContext,
 ): CivilDateTimeParts {
   const baseDate = birthCivilDate ?? {
     year: birthDate.getUTCFullYear(),
@@ -105,10 +139,29 @@ function getAnchorBaseDate(
     second: 0,
   };
   if (anchorRule === 'lunarNewYear') {
-    return { ...baseDate, month: 1, day: 1 };
+    const firstDay = LunarYear.fromYear(baseDate.year).getFirstMonth().getFirstDay().getSolarDay();
+    // 农历锚点采用中国农历正月初一对应的公历日期，映射为当地民用日。
+    return {
+      ...baseDate,
+      year: firstDay.getYear(),
+      month: firstDay.getMonth(),
+      day: firstDay.getDay(),
+    };
   }
   if (anchorRule === 'solarTermBoundary') {
-    return { ...baseDate, month: 2, day: 4 };
+    const termTime = SolarTerm.fromName(baseDate.year, '立春').getJulianDay().getSolarTime();
+    const termInstant = toNativeDate(toSolarDateTimeInfo(termTime));
+    const localTerm = getCivilDateTimeAtFixedOffset(
+      termInstant,
+      getAnchorOffsetHours(termInstant, timeContext),
+    );
+    // 立春日期可能为 2 月 3、4 或 5 日；以实际交节瞬时点换算目标时区日期，不能固定为 2 月 4 日。
+    return {
+      ...baseDate,
+      year: localTerm.year,
+      month: localTerm.month,
+      day: localTerm.day,
+    };
   }
   return baseDate;
 }
@@ -124,10 +177,16 @@ export function buildLifetimeStages(
   birthDate: Date,
   gender?: 'male' | 'female',
   birthCivilDate?: CivilDateTimeParts,
+  timeContext?: QimenLifetimeStageTimeContext,
 ): QimenLifetimeStage[] {
   const model = policy.model ?? 'pillarFourLimits';
   const stages: QimenLifetimeStage[] = [];
-  const anchorBaseDate = getAnchorBaseDate(birthDate, policy.anchorRule, birthCivilDate);
+  const anchorBaseDate = getAnchorBaseDate(
+    birthDate,
+    policy.anchorRule,
+    birthCivilDate,
+    timeContext,
+  );
   const ageOffset = policy.ageSystem === 'nominalAge' ? 1 : 0;
 
   const getPalaceName = (p: number) =>
@@ -150,7 +209,12 @@ export function buildLifetimeStages(
     const hourLookupStem = hourStem === '甲' ? getDunJiaStem(baseChart.ganzhi.hour) : hourStem;
 
     const yearPalaces = baseChart.jiuGongGe
-      .filter((p) => p.tianPan.stem === yearLookupStem || p.diPan.stem === yearLookupStem)
+      .filter(
+        (p) =>
+          p.tianPan.stem === yearLookupStem ||
+          p.tianPan.companionStem === yearLookupStem ||
+          p.diPan.stem === yearLookupStem,
+      )
       .map((p) => p.gong);
     const yearBranchGong = diPanPalaces[yearBranch];
     if (yearBranchGong && !yearPalaces.includes(yearBranchGong)) {
@@ -158,7 +222,12 @@ export function buildLifetimeStages(
     }
 
     const monthPalaces = baseChart.jiuGongGe
-      .filter((p) => p.tianPan.stem === monthLookupStem || p.diPan.stem === monthLookupStem)
+      .filter(
+        (p) =>
+          p.tianPan.stem === monthLookupStem ||
+          p.tianPan.companionStem === monthLookupStem ||
+          p.diPan.stem === monthLookupStem,
+      )
       .map((p) => p.gong);
     const monthBranchGong = diPanPalaces[monthBranch];
     if (monthBranchGong && !monthPalaces.includes(monthBranchGong)) {
@@ -166,11 +235,21 @@ export function buildLifetimeStages(
     }
 
     const dayPalaces = baseChart.jiuGongGe
-      .filter((p) => p.tianPan.stem === dayLookupStem || p.diPan.stem === dayLookupStem)
+      .filter(
+        (p) =>
+          p.tianPan.stem === dayLookupStem ||
+          p.tianPan.companionStem === dayLookupStem ||
+          p.diPan.stem === dayLookupStem,
+      )
       .map((p) => p.gong);
 
     const hourPalaces = baseChart.jiuGongGe
-      .filter((p) => p.tianPan.stem === hourLookupStem || p.diPan.stem === hourLookupStem)
+      .filter(
+        (p) =>
+          p.tianPan.stem === hourLookupStem ||
+          p.tianPan.companionStem === hourLookupStem ||
+          p.diPan.stem === hourLookupStem,
+      )
       .map((p) => p.gong);
     const zhiShiGong = baseChart.jiuGongGe.find((p) => p.renPan.door === baseChart.zhiShi)?.gong;
     if (zhiShiGong && !hourPalaces.includes(zhiShiGong)) {
@@ -272,8 +351,7 @@ export function buildLifetimeStages(
       const ageStart = i * yearsPerStage + ageOffset;
       const ageEnd = (i + 1) * yearsPerStage - 1 + ageOffset;
       const calendarStart = addYearsToCivilDate(anchorBaseDate, i * yearsPerStage);
-      const nextCalendarStart =
-        i < 8 ? addYearsToCivilDate(anchorBaseDate, (i + 1) * yearsPerStage) : undefined;
+      const nextCalendarStart = addYearsToCivilDate(anchorBaseDate, (i + 1) * yearsPerStage);
       const { support, constraints } = evaluatePalaceSupportAndConstraints(gong, baseChart);
 
       stages.push({
@@ -282,9 +360,7 @@ export function buildLifetimeStages(
         ageStart,
         ageEnd,
         calendarStart,
-        calendarEnd: nextCalendarStart
-          ? subtractOneCivilDay(nextCalendarStart)
-          : addYearsToCivilDate(anchorBaseDate, (i + 1) * yearsPerStage - 1),
+        calendarEnd: subtractOneCivilDay(nextCalendarStart),
         dominantPalaces: [{ palace: gong, name: getPalaceName(gong) }],
         associatedMarkers: [`行限临${getPalaceName(gong)}`],
         stageTheme: `九宫巡行运限：当值${getPalaceName(gong)}，能量由该宫门星神干及奇仪克应主导。`,
@@ -295,9 +371,9 @@ export function buildLifetimeStages(
         ],
       });
     }
-  } else {
+  } else if (model === 'fuShiHexagramOrbit') {
     // -------------------------------------------------------------
-    // 模型三：符使卦轨法（依《统宗》值符值使立卦起运，覆盖至 80 岁）
+    // 模型三：符使交替十年分段（保留 fuShiHexagramOrbit 枚举兼容）
     // -------------------------------------------------------------
     const zhiFuPalace =
       baseChart.jiuGongGe.find((p) => p.tianPan.star === baseChart.zhiFu)?.gong || 1;
@@ -306,18 +382,13 @@ export function buildLifetimeStages(
 
     for (let yao = 1; yao <= 8; yao++) {
       const ageStart = (yao - 1) * 10 + ageOffset;
-      const ageEnd = (yao === 8 ? 80 : yao * 10 - 1) + ageOffset;
+      const ageEnd = yao * 10 - 1 + ageOffset;
       const curGong = yao % 2 === 1 ? zhiFuPalace : zhiShiPalace;
       const calendarStart = addYearsToCivilDate(anchorBaseDate, (yao - 1) * 10);
-      const nextCalendarStart = yao < 8 ? addYearsToCivilDate(anchorBaseDate, yao * 10) : undefined;
+      const nextCalendarStart = addYearsToCivilDate(anchorBaseDate, yao * 10);
       const { support, constraints } = evaluatePalaceSupportAndConstraints(curGong, baseChart);
 
-      const yaoTitle =
-        yao <= 6
-          ? `卦轨大运第${yao}爻限`
-          : yao === 7
-            ? `卦轨大运归魂限（甲子重周）`
-            : `卦轨大运晚晴限（颐养天年）`;
+      const yaoTitle = `符使交替第${yao}段`;
 
       stages.push({
         stageIndex: yao - 1,
@@ -325,19 +396,21 @@ export function buildLifetimeStages(
         ageStart,
         ageEnd,
         calendarStart,
-        calendarEnd: nextCalendarStart
-          ? subtractOneCivilDay(nextCalendarStart)
-          : addYearsToCivilDate(anchorBaseDate, 80),
+        calendarEnd: subtractOneCivilDay(nextCalendarStart),
         dominantPalaces: [{ palace: curGong, name: getPalaceName(curGong) }],
         associatedMarkers: [
           yao % 2 === 1 ? `值符星${baseChart.zhiFu}` : `值使门${baseChart.zhiShi}`,
         ],
-        stageTheme: `符使卦轨运限：${yao <= 6 ? `初至末六爻周流，第${yao}限` : `六爻周天后延续，第${yao}步`}由${getPalaceName(curGong)}符使气数主导。`,
+        stageTheme: `符使交替十年分段：第${yao}段由${getPalaceName(curGong)}的${yao % 2 === 1 ? '值符星' : '值使门'}气机作为阶段观察入口。`,
         supportFacts: Array.from(new Set(support)),
         constraintFacts: Array.from(new Set(constraints)),
-        limitations: ['符使卦轨运限为《奇门遁甲统宗》古法理路，爻限大运反映整体十年荣枯趋势。'],
+        limitations: [
+          '本模型是值符宫与值使宫交替的十年分段，保留旧枚举名以兼容历史输入；不等同于《奇门遁甲统宗》的六爻运限，也不表示真实卦爻推演。',
+        ],
       });
     }
+  } else {
+    throw new Error('十年干支大运请使用完整终身局入口，以提供真实出生时刻和时区。');
   }
 
   return stages;

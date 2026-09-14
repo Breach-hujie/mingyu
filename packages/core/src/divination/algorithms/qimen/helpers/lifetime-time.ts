@@ -197,11 +197,20 @@ export function normalizeQimenLifetimeTime(input: QimenLifetimeInput): QimenNorm
     .getName();
 
   // 5. 默认阶段策略
+  if (
+    input.stagePolicy?.model &&
+    !['pillarFourLimits', 'palaceWalk', 'fuShiHexagramOrbit', 'decadalGanzhi'].includes(
+      input.stagePolicy.model,
+    )
+  ) {
+    throw new Error('终身局阶段模型无效。');
+  }
   const stagePolicy: QimenStagePolicy = {
     model: input.stagePolicy?.model ?? 'pillarFourLimits',
     anchorRule: input.stagePolicy?.anchorRule ?? 'birthInstant',
     ageSystem: input.stagePolicy?.ageSystem ?? 'fullYears',
-    yearsPerStage: input.stagePolicy?.yearsPerStage ?? 15,
+    yearsPerStage:
+      input.stagePolicy?.model === 'decadalGanzhi' ? 10 : (input.stagePolicy?.yearsPerStage ?? 15),
   };
 
   const basis = {

@@ -13,6 +13,8 @@ export type { AstrolabePromptTopic };
 export type ZiweiScopeMode =
   'origin' | 'full' | 'decadal' | 'yearly' | 'monthly' | 'daily' | 'hourly';
 export type AstrolabeScopeMode = 'natal' | 'full' | 'yearly' | 'monthly' | 'daily';
+export type QimenLifetimeStageModel =
+  'pillarFourLimits' | 'decadalGanzhi' | 'palaceWalk' | 'fuShiHexagramOrbit';
 export type AnalysisMode = 'single' | 'compatibility';
 export type ChartType = 'bazi' | 'ziwei' | 'astrolabe';
 
@@ -82,6 +84,7 @@ export type QueryPromptState = {
   residentialFlowYear: string;
   residentialFlowMonth: string;
   residentialFlowDay: string;
+  qimenLifetimeStageModel: QimenLifetimeStageModel;
 };
 
 const BAZI_FORTUNE_SCOPES: readonly BaziFortuneScope[] = [
@@ -207,6 +210,7 @@ export function createDefaultPromptState(now: Date = new Date()): QueryPromptSta
     residentialFlowYear: getDefaultAstrolabeScopeDate('yearly', now),
     residentialFlowMonth: getDefaultAstrolabeScopeDate('monthly', now).slice(5),
     residentialFlowDay: getDefaultAstrolabeScopeDate('daily', now).slice(8),
+    qimenLifetimeStageModel: 'pillarFourLimits',
   };
 }
 
@@ -300,6 +304,7 @@ const PROMPT_PARAM_KEYS: Record<keyof QueryPromptState, string> = {
   residentialFlowYear: 'rfy',
   residentialFlowMonth: 'rfm',
   residentialFlowDay: 'rfd',
+  qimenLifetimeStageModel: 'qlsm',
 };
 
 const PARAM_KEY_ALIASES: Record<string, string> = {
@@ -537,6 +542,12 @@ function appendPromptStateParams(params: URLSearchParams, prompt: QueryPromptSta
     prompt.residentialGuaType,
     defaultPromptState.residentialGuaType,
   );
+  setCompactParam(
+    params,
+    'qimenLifetimeStageModel',
+    prompt.qimenLifetimeStageModel,
+    defaultPromptState.qimenLifetimeStageModel,
+  );
   const persistResidentialFlow = prompt.promptSource === 'bazhai' || prompt.tab === 'bazhai';
   if (persistResidentialFlow) {
     params.set('rfy', prompt.residentialFlowYear);
@@ -687,6 +698,20 @@ function parseAstrolabeScope(value: string): AstrolabeScopeMode {
   return defaultPromptState.astrolabeScope;
 }
 
+const QIMEN_LIFETIME_STAGE_MODELS: readonly QimenLifetimeStageModel[] = [
+  'pillarFourLimits',
+  'decadalGanzhi',
+  'palaceWalk',
+  'fuShiHexagramOrbit',
+];
+
+function parseQimenLifetimeStageModel(value: string): QimenLifetimeStageModel {
+  if (QIMEN_LIFETIME_STAGE_MODELS.includes(value as QimenLifetimeStageModel)) {
+    return value as QimenLifetimeStageModel;
+  }
+  return defaultPromptState.qimenLifetimeStageModel;
+}
+
 function parseScopeDateParts(value: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) {
@@ -777,6 +802,10 @@ function normalizeResidentialFlowDate(yearText: string, monthText: string, dayTe
 
 function normalizePromptState(prompt: QueryPromptState): QueryPromptState {
   const normalized: QueryPromptState = { ...prompt };
+
+  normalized.qimenLifetimeStageModel = parseQimenLifetimeStageModel(
+    normalized.qimenLifetimeStageModel,
+  );
 
   if (normalized.ziweiShortcutMode === '自定义') {
     normalized.ziweiTopic = 'chat';
@@ -1053,6 +1082,9 @@ export function parsePromptState(params: URLSearchParams): QueryPromptState {
       params,
       'residentialFlowDay',
       hasResidentialFlow ? '' : currentDefaultPromptState.residentialFlowDay,
+    ),
+    qimenLifetimeStageModel: parseQimenLifetimeStageModel(
+      getString(params, 'qimenLifetimeStageModel', defaultPromptState.qimenLifetimeStageModel),
     ),
   });
 }

@@ -98,6 +98,30 @@ const TOPIC_LABELS: Record<ZiweiPromptTopic, string> = {
   chat: '自由问答',
 };
 
+const TOPIC_FACT_FOCUS: Partial<Record<ZiweiPromptTopic, string>> = {
+  relationship: '夫妻宫及其对宫、三方四正，命身宫，相关星曜与四化落点',
+  'relationship-push': '夫妻宫、福德宫、迁移宫，命身宫及四化关系',
+  'relationship-decision': '夫妻宫、福德宫、官禄宫及四化关系',
+  'reconciliation-decision': '夫妻宫、福德宫、迁移宫，双方关系宫位与四化承接',
+  children: '子女宫及其三方四正、命身宫与相关四化',
+  'career-wealth': '官禄宫、财帛宫、迁移宫及命身宫',
+  'job-change': '官禄宫、迁移宫、福德宫与四化关系',
+  'startup-partnership': '官禄宫、财帛宫、迁移宫、兄弟宫与关系四化',
+  'investment-partnership': '财帛宫、田宅宫、福德宫、官禄宫与四化落点',
+  recent: '【分析对象】所列层级的落宫、四化及其与本命命身轴的关系',
+  family: '父母宫、兄弟宫、子女宫、田宅宫及相关四化',
+  'home-move': '田宅宫、迁移宫及福德宫',
+  'settle-relocate': '迁移宫、田宅宫及官禄宫',
+  social: '迁移宫、兄弟宫、夫妻宫及相关星曜和四化',
+  emotion: '福德宫、命宫、疾厄宫及相关四化',
+  health: '疾厄宫、父母宫、福德宫与命身宫',
+  study: '官禄宫、父母宫、福德宫及相关星曜四化',
+  'study-advance': '官禄宫、父母宫、福德宫与四化关系',
+  'exam-landing': '官禄宫、父母宫、迁移宫与四化关系',
+  growth: '命宫、身宫与福德宫',
+  talent: '命宫、身宫、官禄宫及本命主辅星',
+};
+
 const SCOPE_ORDER: ScopeType[] = [
   'origin',
   'decadal',
@@ -289,6 +313,91 @@ export function getZiweiPromptCalculationScopes(scope: ZiweiPromptScope): ScopeT
   return scope === 'full' ? SCOPE_ORDER : [scope];
 }
 
+export function formatZiweiTopicFocus(topic?: ZiweiPromptTopic) {
+  if (!topic) return '';
+  const focus = TOPIC_FACT_FOCUS[topic];
+  return focus
+    ? `优先核对${TOPIC_LABELS[topic]}相关的${focus}；其余已列宫位资料作为交叉核验。`
+    : '';
+}
+
+/**
+ * 把完整运限压缩为当前请求的连续阶段，避免选定流年或流月时把其他
+ * 十年运和年度资料一并带入；阶段内的干支、宫位、星曜和下层事实仍完整保留。
+ */
+export function formatZiweiSelectedTimeline(
+  timeline: ZiweiFortuneTimeline,
+  scope: ZiweiPromptScope,
+) {
+  const periodEnd = (period: ZiweiFortuneTimeline['periods'][number]) =>
+    period.endDateStr ?? period.years.at(-1)?.endDateStr ?? period.dateStr;
+  const periodIndex = timeline.periods.findIndex(
+    (period) =>
+      period.dateStr <= timeline.targetDateStr && periodEnd(period) >= timeline.targetDateStr,
+  );
+  const fallbackPeriodIndex = timeline.periods.findIndex(
+    (period) => timeline.targetAge >= period.startAge && timeline.targetAge <= period.endAge,
+  );
+  const selectedPeriodIndex = periodIndex >= 0 ? periodIndex : fallbackPeriodIndex;
+  if (selectedPeriodIndex < 0) return '';
+
+  if (scope === 'decadal') {
+    const period = timeline.periods[selectedPeriodIndex];
+    if (!period?.years.length) return '';
+    return formatZiweiFortuneTimelinePhase(
+      timeline,
+      [
+        {
+          periodIndex: selectedPeriodIndex,
+          startYearIndex: 0,
+          endYearIndex: period.years.length - 1,
+        },
+      ],
+      1,
+      1,
+    );
+  }
+
+  // 指定流年/流月可能跨生日或大限边界。生成器已将真实目标流年的
+  // 起止日写入 actualStart/actualEnd，按日期相交保留两侧连续年龄段，
+  // 同时只让目标日期所在的那一段携带流月、流日和流时资料。
+  const hasTargetWindow = ['year', 'month', 'day', 'hour'].includes(timeline.scope);
+  const windowStart = hasTargetWindow ? timeline.actualStartDateStr : timeline.targetDateStr;
+  const windowEnd = hasTargetWindow ? timeline.actualEndDateStr : timeline.targetDateStr;
+  const selections: ZiweiFortuneTimelinePhaseSelection[] = [];
+  for (const [index, period] of timeline.periods.entries()) {
+    const yearIndexes = period.years
+      .map((year, yearIndex) => ({ year, yearIndex }))
+      .filter(({ year }) => {
+        const end = year.endDateStr ?? year.dateStr;
+        return year.dateStr <= windowEnd && end >= windowStart;
+      })
+      .map(({ yearIndex }) => yearIndex);
+    if (!yearIndexes.length) continue;
+    selections.push({
+      periodIndex: index,
+      startYearIndex: Math.min(...yearIndexes),
+      endYearIndex: Math.max(...yearIndexes),
+    });
+  }
+  if (!selections.length) {
+    const period = timeline.periods[selectedPeriodIndex];
+    const selectedYearIndex =
+      period?.years.findIndex(
+        (year) =>
+          year.dateStr <= timeline.targetDateStr &&
+          (year.endDateStr ?? year.dateStr) >= timeline.targetDateStr,
+      ) ?? -1;
+    if (selectedYearIndex < 0) return '';
+    selections.push({
+      periodIndex: selectedPeriodIndex,
+      startYearIndex: selectedYearIndex,
+      endYearIndex: selectedYearIndex,
+    });
+  }
+  return formatZiweiFortuneTimelinePhase(timeline, selections, 1, 1);
+}
+
 export function formatZiweiTargetLowerScopeFacts(runtime: Pick<ZiweiRuntime, 'payloadByScope'>) {
   const scopes: ScopeType[] = ['monthly', 'daily', 'hourly'];
   const lines = scopes.flatMap((scope) => {
@@ -393,7 +502,7 @@ export function buildZiweiPromptDocument(options: ZiweiPromptOptions): PromptDoc
             )
             .join('\n\n'),
           options.runtime.fortuneTimeline
-            ? `运限范围资料：\n${formatZiweiFortuneTimeline(options.runtime.fortuneTimeline)}`
+            ? formatZiweiSelectedTimeline(options.runtime.fortuneTimeline, scope)
             : '',
         ]
           .filter(Boolean)
@@ -425,6 +534,9 @@ export function buildZiweiPromptDocument(options: ZiweiPromptOptions): PromptDoc
     buildPromptSection('当前时间', formatPromptCurrentTime(options.currentTime)),
     formatTrueSolarEvidence(options.runtime)
       ? buildPromptSection('出生时间校正', formatTrueSolarEvidence(options.runtime))
+      : '',
+    formatZiweiTopicFocus(options.topic)
+      ? buildPromptSection('主题取用', formatZiweiTopicFocus(options.topic))
       : '',
     buildPromptSection('紫微盘面资料', chartText),
     schoolText

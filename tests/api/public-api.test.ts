@@ -5000,6 +5000,9 @@ test('公开 API supplementaryInfo 应校验嵌套字段并保留求测人基本
 
   assert.equal(qimen.response.status, 200);
   assert.match(qimen.body.data.prompt, /年命资料：公历1990年/);
+  assert.match(qimen.body.data.prompt, /换象：/);
+  assert.match(qimen.body.data.prompt, /造象：/);
+  assert.match(qimen.body.data.prompt, /同干定位：/);
   assert.doesNotMatch(qimen.body.data.prompt, /【补充信息】[\s\S]*出生年份/);
 
   const invalidNestedField = await callApi('divination/liuren/prompt', {
@@ -6331,7 +6334,10 @@ test('公开 API 区分诸葛神数与孔明神卦并支持孔明随机重放', 
   });
   assert.equal(zhugePrompt.response.status, 200);
   assert.match(zhugePrompt.body.data.prompt, /【问题】/);
-  assert.match(zhugePrompt.body.data.prompt, /康熙笔画/);
+  assert.match(zhugePrompt.body.data.prompt, /签号：第\d+签/);
+  assert.match(zhugePrompt.body.data.prompt, /签诗：/);
+  assert.match(zhugePrompt.body.data.prompt, /基础解签：/);
+  assert.doesNotMatch(zhugePrompt.body.data.prompt, /康熙笔画|所写三字|【当前时间】/);
 
   const random = await callApi('divination/kongming', {
     method: 'POST',
@@ -6353,7 +6359,8 @@ test('公开 API 区分诸葛神数与孔明神卦并支持孔明随机重放', 
     body: JSON.stringify({ pattern: '10000', question: '这次转变如何准备？' }),
   });
   assert.equal(kongmingPrompt.response.status, 200);
-  assert.match(kongmingPrompt.body.data.prompt, /诗句取象：龙门鱼跃过/);
+  assert.match(kongmingPrompt.body.data.prompt, /基础解签：龙门鱼跃过/);
+  assert.doesNotMatch(kongmingPrompt.body.data.prompt, /五枚硬币|卦序：|【当前时间】/);
   assert.match(kongmingPrompt.body.data.prompt, /《尚书·洪范》“金曰从革”/);
   assert.match(kongmingPrompt.body.data.prompt, /这次转变如何准备/);
 
