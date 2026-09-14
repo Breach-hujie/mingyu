@@ -45,7 +45,7 @@ export const FLYING_STAR_WUXING: Record<number, '水' | '土' | '木' | '金' | 
   9: '火',
 };
 
-export type FlyingStarYunState = '当运' | '生气' | '退气' | '死气' | '平气';
+export type FlyingStarYunState = '当运' | '生气' | '退气' | '死气' | '煞气';
 export type ShanXiangRelation = '生入' | '生出' | '克入' | '克出' | '比和';
 
 export interface XuanKongPeriodStarPlate {
@@ -168,11 +168,14 @@ export function resolveFlyingStarYunState(star: number, yun: number): FlyingStar
   if (!Number.isInteger(yun) || yun < 1 || yun > 9) {
     throw new Error(`运数必须是 1-9，当前为 ${String(yun)}。`);
   }
-  if (star === yun) return '当运';
-  if (star === (yun % 9) + 1) return '生气';
-  if (star === ((yun + 7) % 9) + 1) return '退气';
-  if (star === 10 - yun || (yun === 5 && star === 5)) return '死气';
-  return '平气';
+  // 《玄空风水学》第三章九运表的旺、生、死、煞、退五气口径。
+  // 按距当运的循环星序判定，合十是另一种关系，不能用来推导死气。
+  const offset = (star - yun + 9) % 9;
+  if (offset === 0) return '当运';
+  if (offset <= 2) return '生气';
+  if (offset <= 4) return '死气';
+  if (offset <= 7) return '煞气';
+  return '退气';
 }
 
 export function resolveShanXiangRelation(shanStar: number, xiangStar: number): ShanXiangRelation {

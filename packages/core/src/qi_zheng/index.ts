@@ -20,9 +20,9 @@
  */
 import * as AstronomyEngine from 'astronomy-engine';
 import type { Body } from 'astronomy-engine';
-import { SevenStar, TwentyEightStar } from 'tyme4ts';
+import { SevenStar, SolarTerm, TwentyEightStar } from 'tyme4ts';
 import { getCivilDateTimeAtFixedOffset, resolveCivilTime } from '../calendar/civil-time';
-import { daysInGregorianMonth } from '../calendar/date-validation';
+import { createUtcTimestamp, daysInGregorianMonth } from '../calendar/date-validation';
 import { getShichenFromClock } from '../calendar/dateUtils';
 import { getHistoricalTimezoneOffsetAt } from '../calendar/historical-timezone';
 import { calculateTrueSolarTime } from '../calendar/true-solar-time';
@@ -1795,8 +1795,8 @@ function resolveQizhengFlowCivilInput(natal: QizhengInput):
       timestampNote: `未指定流日时，流曜周期按${natal.flowYear}年${natal.flowMonth}月整月扫描；落宫取月中 15日 12:00，不代替整月`,
     };
   }
-  const lichun = calculateSolarTermEvidence(natal.flowYear, 3);
-  const parts = utcMsToTimezoneParts(lichun.utcTimestamp, natal);
+  const lichunUtc = getQizhengLichunUtc(natal.flowYear);
+  const parts = utcMsToTimezoneParts(lichunUtc, natal);
   return {
     flowInput: buildQizhengFlowInput(natal, parts),
     timestampNote: `未指定流月时，流曜周期自立春扫描至次年立春；落宫取立春交节，不代替全年`,
@@ -1912,6 +1912,31 @@ function resolveQizhengLocalTimestamp(parts: QizhengCivilMinute, natal: QizhengI
   return resolveCivilTime({ ...parts, second: 0, ...timezoneInput }).utcTimestamp;
 }
 
+/**
+ * 取得七政流年窗口的立春 UTC 时刻。
+ *
+ * 七政公开输入允许流年到 2200 年；年度窗口还需要 2201 年立春作为右端点，
+ * 但共享节气证据为了保持自身的 1900-2200 契约不会接受 2201。这里仅为这个
+ * 已通过输入校验的年度右端点复用同一 tyme4ts 历表初值，2201 不因此成为可排流年。
+ */
+function getQizhengLichunUtc(year: number): number {
+  if (year <= 2200) return calculateSolarTermEvidence(year, 3).utcTimestamp;
+  if (year !== 2201) throw new Error('七政年度窗口只支持 2200 年以内的流年。');
+  const time = SolarTerm.fromIndex(year, 3).getJulianDay().getSolarTime();
+  // tyme4ts 节气民用时刻按中国标准时表达，转 UTC 只用于周期边界。
+  return (
+    createUtcTimestamp(
+      time.getYear(),
+      time.getMonth() - 1,
+      time.getDay(),
+      time.getHour(),
+      time.getMinute(),
+      time.getSecond(),
+    ) -
+    8 * 3600000
+  );
+}
+
 function nextQizhengCivilDate(year: number, month: number, day: number) {
   const maxDay = daysInGregorianMonth(year, month);
   if (day < maxDay) return { year, month, day: day + 1 };
@@ -1953,8 +1978,8 @@ function resolveQizhengPeriodWindow(natal: QizhengInput): {
       mode: 'monthly',
     };
   }
-  const start = calculateSolarTermEvidence(natal.flowYear as number, 3).utcTimestamp;
-  const end = calculateSolarTermEvidence((natal.flowYear as number) + 1, 3).utcTimestamp;
+  const start = getQizhengLichunUtc(natal.flowYear as number);
+  const end = getQizhengLichunUtc((natal.flowYear as number) + 1);
   return { startUtcMs: start, endUtcMs: end, mode: 'yearly' };
 }
 

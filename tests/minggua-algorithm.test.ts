@@ -46,6 +46,23 @@ test('八宅命卦公式应按年命数计算并处理五黄寄宫', () => {
   });
 });
 
+test('命卦应支持立春换年后的天文年 0', () => {
+  assert.deepEqual(calculateMingGua(0, 'male'), {
+    number: 2,
+    gua: '坤',
+    star: '二黑巨门',
+    element: '土',
+    eastWest: '西四命',
+  });
+  assert.deepEqual(calculateMingGua(0, 'female'), {
+    number: 4,
+    gua: '巽',
+    star: '四绿文曲',
+    element: '木',
+    eastWest: '东四命',
+  });
+});
+
 test('八字排盘结果应输出命卦，并按立春年界取年', () => {
   const beforeLichun = baziCalculator.calculateBazi({
     year: 2024,

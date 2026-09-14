@@ -35,6 +35,27 @@ test('八宅低年份立春换年保留原始公历年份', () => {
   }
 });
 
+test('八宅公元 1 年立春前应保留原始公历年并传递天文年 0', () => {
+  const result = analyzeBaZhai({
+    birthYear: 1,
+    birthMonth: 1,
+    birthDay: 1,
+    gender: 'male',
+  });
+  assert.equal(result.calculationInput.birthYear, 1);
+  assert.equal(result.effectiveBirthYear, 0);
+  assert.equal(result.mingGua, '坤');
+  assert.match(result.birthYearBoundaryNote, /1 年立春前/);
+  assert.match(result.birthYearBoundaryNote, /公元前1年（天文年0）/);
+  const female = analyzeBaZhai({ birthYear: 1, birthMonth: 1, birthDay: 1, gender: 'female' });
+  assert.equal(female.effectiveBirthYear, 0);
+  assert.equal(female.mingGua, '巽');
+  assert.equal(
+    analyzeBaZhai({ birthYear: 1, birthMonth: 7, birthDay: 1, gender: 'male' }).effectiveBirthYear,
+    1,
+  );
+});
+
 test('八宅命卦应符合 2000 年前后传统九宫真值与五黄寄宫口径', () => {
   const cases = [
     { birthYear: 1990, gender: 'male' as const, gua: '坎' },

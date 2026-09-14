@@ -39,13 +39,13 @@ function normalizeMingGuaNumber(value: number): number {
 
 /**
  * 计算命卦
- * @param birthYear 出生公历年份（已按立春换年处理）
+ * @param birthYear 出生公历年份（已按立春换年处理；公元 1 年立春前可用天文年 0 表示公元前 1 年）
  * @param gender 性别 'male' | 'female'
  * @returns 命卦信息
  */
 export function calculateMingGua(birthYear: number, gender: string): MingGuaProfile {
-  if (!Number.isSafeInteger(birthYear) || birthYear < 1 || birthYear > 9999) {
-    throw new Error('出生年份必须是有效整数（1-9999）。');
+  if (!Number.isSafeInteger(birthYear) || birthYear < 0 || birthYear > 9999) {
+    throw new Error('命卦计算年份必须是有效整数（0-9999）；0 表示公元前 1 年。');
   }
   if (gender !== 'male' && gender !== 'female') {
     throw new Error('性别必须是 male 或 female。');

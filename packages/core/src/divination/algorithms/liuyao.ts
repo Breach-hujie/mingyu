@@ -609,7 +609,8 @@ function getNaJiaAndLiuQin(mainHexagramName: string, palace: { name: string; wux
 }
 
 /**
- * 飞伏生克与出伏难易判定（依据《增删卜易·伏神章》与《卜筮正宗》）
+ * 记录飞伏生克与空破条件（依据《增删卜易·飞伏神章》与《卜筮正宗》）。
+ * 当前参数不足以完成出伏或成败判定，因此只返回条件事实及所需的后续核验。
  */
 export function evaluateLiuyaoHiddenSpiritInteraction(params: {
   hiddenWuxing: string;
@@ -619,34 +620,32 @@ export function evaluateLiuyaoHiddenSpiritInteraction(params: {
   flyingVoid: boolean;
   monthBranch?: string;
 }): string {
-  const { hiddenWuxing, flyingWuxing, flyingDizhi, flyingVoid, monthBranch } = params;
+  const { hiddenWuxing, hiddenVoid, flyingWuxing, flyingDizhi, flyingVoid, monthBranch } = params;
+  const conditions: string[] = [];
 
-  // 1. 检查飞神是否空破（《增删卜易·伏神章》：飞神逢空逢破，无力压伏，伏神易得出）
+  // 《增删卜易·飞伏神章》同时论伏神旬空与飞神空破：伏神空亡须核日月、动爻及出空，
+  // 飞神空破只说明覆盖力减弱。当前接口没有完整日月动爻层，不能据此直接断成败。
+  if (hiddenVoid) conditions.push('伏神旬空，出伏需核日月、动爻、旺衰及出空条件');
   const isFlyingMonthBroken = monthBranch ? isLiuchong(flyingDizhi, monthBranch) : false;
-  if (flyingVoid || isFlyingMonthBroken) {
-    const reason =
-      flyingVoid && isFlyingMonthBroken ? '飞神旬空且月破' : flyingVoid ? '飞神旬空' : '飞神月破';
-    return `${reason}，压制瓦解，伏神易脱颖而出`;
-  }
+  if (flyingVoid) conditions.push('飞神旬空，覆盖力减弱');
+  if (isFlyingMonthBroken) conditions.push('飞神月破，覆盖力减弱');
 
-  // 2. 飞伏生克五行判定
+  let relation: string;
   if (isSheng(flyingWuxing, hiddenWuxing)) {
-    return '飞来生伏得长生，得飞神生扶，伏神最易得出，多得暗中助力';
-  }
-  if (isKe(hiddenWuxing, flyingWuxing)) {
-    return '伏克飞神为出暴，伏神有力可破制而出，虽费周折终能成事';
-  }
-  if (isKe(flyingWuxing, hiddenWuxing)) {
-    return '飞来克伏受制，伏神被死压难出，求谋阻滞不易成';
-  }
-  if (isSheng(hiddenWuxing, flyingWuxing)) {
-    return '伏生飞神泄气，生助飞神而自身耗损，多劳少功';
-  }
-  if (hiddenWuxing === flyingWuxing) {
-    return '飞伏比和同气，得平辈同侪暗助';
+    relation = '飞神生伏，存在飞神生扶条件';
+  } else if (isKe(hiddenWuxing, flyingWuxing)) {
+    relation = '伏神克飞，存在伏神冲破覆盖条件';
+  } else if (isKe(flyingWuxing, hiddenWuxing)) {
+    relation = '飞神克伏，存在飞神压制条件';
+  } else if (isSheng(hiddenWuxing, flyingWuxing)) {
+    relation = '伏神生飞，存在伏神泄气条件';
+  } else if (hiddenWuxing === flyingWuxing) {
+    relation = '飞伏比和，二者五行同气';
+  } else {
+    relation = '飞伏无直接五行生克';
   }
 
-  return '飞伏平';
+  return [...conditions, relation, '出伏仍需结合日月、动爻及旺衰综合核验'].join('；');
 }
 
 function buildHiddenSpirits(params: {

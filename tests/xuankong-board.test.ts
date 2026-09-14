@@ -11,6 +11,32 @@ import { TWENTY_FOUR_MOUNTAINS } from '../packages/core/src/direction/index.ts';
 
 const NINE_STARS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
+test('玄空九运下卦符合沈氏玄空学四十八旺山旺向局原表', () => {
+  // 《沈氏玄空学》卷二“论四十八局”，按原文列坐山，朝向均为正对山。
+  // https://www.diancangwang.cn/xuanxuewushu/f6f37803664b/34f0e0aa12ff.html
+  const expected = [
+    '',
+    '乾巽巳亥丑未',
+    '辰戌卯酉乙辛',
+    '甲庚艮坤寅申',
+    '子午癸丁卯酉乙辛辰戌丑未',
+    '甲庚艮坤寅申',
+    '辰戌卯酉乙辛',
+    '乾巽巳亥丑未',
+    '',
+  ];
+  let count = 0;
+  for (let yun = 1; yun <= 9; yun++) {
+    for (const sitMountain of TWENTY_FOUR_MOUNTAINS) {
+      const result = generateXuanKong({ year: 1864 + (yun - 1) * 20, sitMountain });
+      const isWang = result.formation === '旺山旺向';
+      assert.equal(isWang, expected[yun - 1].includes(sitMountain), `${yun}运${sitMountain}山`);
+      if (isWang) count++;
+    }
+  }
+  assert.equal(count, 48);
+});
+
 test('玄空九运二十四山提示词保留山向五黄的全部落宫', () => {
   for (let yun = 1; yun <= 9; yun++) {
     for (const sitMountain of TWENTY_FOUR_MOUNTAINS) {

@@ -5,7 +5,7 @@ import { generateResidentialFengshui } from '../packages/core/src/residential_fe
 
 test('九运玄空正文明确星数五行与山向运的生克施受', () => {
   const result = generateXuanKong({ year: 2024, sitMountain: '午' });
-  assert.match(result.prompt, /运5（土，平气） 山9（火，当运） 向9（火，当运）/);
+  assert.match(result.prompt, /运5（土，煞气） 山9（火，当运） 向9（火，当运）/);
   assert.match(result.prompt, /山星9火生运星5土/);
   assert.match(result.prompt, /向星9火生运星5土/);
   assert.match(result.prompt, /山向生入：向星2土生山星7金/);

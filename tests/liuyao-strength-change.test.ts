@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import {
   generateLiuyao,
+  evaluateLiuyaoHiddenSpiritInteraction,
   getLiuyaoChangeDirection,
   getLiuyaoChangeRelation,
   getLiuyaoChangeRelations,
@@ -187,6 +188,31 @@ test('六爻：变爻旬空与回头生克等基础动变条件可以并见', ()
 
   // 旧单值入口继续保持既有口径，避免已有调用方升级后结果突变。
   assert.equal(getLiuyaoChangeRelation('木', '水', '寅', '子', true), '化空');
+});
+
+test('六爻：伏神旬空应单独保留出伏边界，不得与实伏得到相同结论', () => {
+  const solidHidden = evaluateLiuyaoHiddenSpiritInteraction({
+    hiddenWuxing: '木',
+    hiddenVoid: false,
+    flyingWuxing: '水',
+    flyingDizhi: '亥',
+    flyingVoid: false,
+    monthBranch: '子',
+  });
+  const voidHidden = evaluateLiuyaoHiddenSpiritInteraction({
+    hiddenWuxing: '木',
+    hiddenVoid: true,
+    flyingWuxing: '水',
+    flyingDizhi: '亥',
+    flyingVoid: false,
+    monthBranch: '子',
+  });
+
+  assert.match(solidHidden, /^飞神生伏，存在飞神生扶条件；/);
+  assert.match(voidHidden, /^伏神旬空，出伏需核日月、动爻、旺衰及出空条件；/);
+  assert.match(voidHidden, /飞神生伏，存在飞神生扶条件/);
+  assert.match(voidHidden, /出伏仍需结合日月、动爻及旺衰综合核验/);
+  assert.notEqual(voidHidden, solidHidden);
 });
 
 test('六爻：回头冲与五行生克应分别保存', () => {

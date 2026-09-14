@@ -355,7 +355,17 @@ function oppositeMountain(mountain: string): string {
   return TWENTY_FOUR_MOUNTAINS[(index + 12) % 24];
 }
 
-function resolveMountains(input: XuanKongInput): {
+/** 独立校验住宅坐向；坐向与测量容差不依赖宅运年份。 */
+export function resolveXuanKongOrientation(
+  input: Pick<
+    XuanKongInput,
+    | 'sitMountain'
+    | 'facingMountain'
+    | 'sitDegree'
+    | 'facingDegree'
+    | 'measurementUncertaintyDegrees'
+  >,
+): {
   sitMountain: string;
   facingMountain: string;
   measurement?: XuanKongMeasurement;
@@ -634,6 +644,7 @@ function buildPrompt(result: Omit<XuanKongResult, 'evidenceAnalysis' | 'prompt'>
   return [
     '【玄空飞星排盘】',
     `运程：${result.period.label}`,
+    '星气采用旺、生、死、煞、退五气口径：当运为旺，后续两星为生，随后两星为死，再后三星为煞，前一运星为退；结合实际山水形势和星宫生克解读。',
     `本次资料层级：宅盘（运盘、山盘、向盘）${result.flowStars ? '、流年盘' : ''}${result.flowStars?.monthPlate ? '、流月盘' : ''}。各星当运、生气、退气等状态以宅盘${result.period.yun}运为参照。`,
     `山向：坐${result.sitMountain}向${result.facingMountain}`,
     `卦型：${result.guaType}；${result.replacementReason}`,
@@ -701,7 +712,7 @@ export function generateXuanKong(input: XuanKongInput): XuanKongResult {
     throw new Error('玄空飞星参数必须是对象。');
   }
   const period = resolveXuanKongPeriod(input.year);
-  const { sitMountain, facingMountain, measurement } = resolveMountains(input);
+  const { sitMountain, facingMountain, measurement } = resolveXuanKongOrientation(input);
   const gua = resolveGuaType(input, measurement);
   const chart = buildChart(period.year, sitMountain);
   if (chart.period !== period.yun || chart.facing.name !== facingMountain) {

@@ -2,6 +2,81 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateResidentialFengshui } from '../packages/core/src/residential_fengshui/index.ts';
 
+test('住宅门向与额外坐向必须描述同一住宅，不能分别用于八宅和玄空', () => {
+  for (const mingGua of [undefined, '坎']) {
+    for (const extra of [
+      { facingDegree: 0 },
+      { sitDegree: 180 },
+      { sitMountain: '子' },
+      { facingMountain: '午' },
+    ]) {
+      assert.throws(
+        () =>
+          generateResidentialFengshui({
+            mingGua,
+            year: 2024,
+            doorToInteriorDegree: 90,
+            ...extra,
+          }),
+        /不一致|相差180度/,
+      );
+    }
+  }
+});
+
+test('缺少宅运年份时仍按已有朝向或坐向独立计算八宅宅卦', () => {
+  for (const orientation of [
+    { sitMountain: '子' },
+    { facingMountain: '午' },
+    { sitDegree: 0 },
+    { facingDegree: 180 },
+  ]) {
+    const result = generateResidentialFengshui({ mingGua: '坎', ...orientation });
+    assert.equal(result.bazhai?.houseGua, '坎');
+    assert.equal(result.bazhai?.match, '相合');
+    assert.equal(result.xuankong, null);
+    assert.equal(result.inputSummary.hasHouseOrientation, true);
+    assert.equal(result.inputSummary.orientationText, '坐子向午');
+    assert.match(result.prompt, /宅卦：坎/);
+  }
+  assert.throws(
+    () =>
+      generateResidentialFengshui({
+        mingGua: '坎',
+        sitMountain: '子',
+        facingMountain: '酉',
+      }),
+    /严格相对/,
+  );
+});
+
+test('住宅坐向度数与等效门向使用相同磁偏角并保留测量候选', () => {
+  const input = {
+    mingGua: '坎',
+    year: 2024,
+    northReference: 'magnetic' as const,
+    magneticDeclinationDegrees: 1,
+    measurementUncertaintyDegrees: 3,
+  };
+  const door = generateResidentialFengshui({ ...input, doorToInteriorDegree: 21 });
+  const facing = generateResidentialFengshui({ ...input, facingDegree: 201 });
+  const all = generateResidentialFengshui({
+    ...input,
+    doorToInteriorDegree: 21,
+    sitDegree: 21,
+    facingDegree: 201,
+  });
+  assert.deepEqual(facing.xuankong?.plates, door.xuankong?.plates);
+  assert.deepEqual(all.xuankong?.measurement, door.xuankong?.measurement);
+  assert.equal(facing.xuankong?.measurement?.sitDegree, 22);
+  assert.equal(facing.bazhai?.evidenceAnalysis.measurementFact.status, '宅卦不稳定');
+  assert.deepEqual(
+    facing.bazhai?.evidenceAnalysis.measurementFact.candidates,
+    door.bazhai?.evidenceAnalysis.measurementFact.candidates,
+  );
+  assert.equal(facing.bazhai?.evidenceAnalysis.measurementFact.method, '按住宅坐山度数换算');
+});
+
 test('住宅方位合参按八个完整方向对应命卦而非方位字串包含', () => {
   const directions = {
     坎: '北',

@@ -64,6 +64,27 @@ test('九星当运与山向生克只记录结构，不打吉凶分', () => {
   assert.equal(resolveShanXiangRelation(3, 2), '克出');
 });
 
+test('九星旺衰按九运五气表完整轮转，合十不决定死气', () => {
+  // 《玄空风水学》第三章列出一运与九运的九星气序。
+  // https://www.guoxuemi.com/a/22540l/284961m.html
+  const one = ['当运', '生气', '生气', '死气', '死气', '煞气', '煞气', '煞气', '退气'];
+  const nine = ['生气', '生气', '死气', '死气', '煞气', '煞气', '煞气', '退气', '当运'];
+  assert.deepEqual(
+    one.map((_, i) => resolveFlyingStarYunState(i + 1, 1)),
+    one,
+  );
+  assert.deepEqual(
+    nine.map((_, i) => resolveFlyingStarYunState(i + 1, 9)),
+    nine,
+  );
+  for (let yun = 1; yun <= 9; yun++) {
+    const states = one.map((_, i) => resolveFlyingStarYunState(i + 1, yun));
+    for (const [state, count] of Object.entries({ 当运: 1, 生气: 2, 死气: 2, 煞气: 3, 退气: 1 })) {
+      assert.equal(states.filter((item) => item === state).length, count, `${yun}运${state}`);
+    }
+  }
+});
+
 test('三元年紫白按上元甲子一白逐年逆行一百八十年', () => {
   let expected = 1;
   for (let year = 1864; year < 2044; year++) {

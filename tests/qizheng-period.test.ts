@@ -98,6 +98,22 @@ test('只有流年没有性别时只排流曜，不编造行限', () => {
   assert.doesNotMatch(result.prompt, /【行限】/);
 });
 
+test('流年上限 2200 的年度周期应闭合到次年立春', () => {
+  const result = generateQizheng({
+    ...NATAL,
+    flowYear: 2200,
+  });
+  const flow = result.flowingStars;
+  const period = flow?.periodEvents;
+  assert.ok(flow);
+  assert.ok(period);
+  assert.equal(flow.year, 2200);
+  assert.equal(period.mode, 'yearly');
+  assert.match(period.startDateTime, /^2200-02-04 /);
+  assert.match(period.endDateTime, /^2201-02-04 /);
+  assert.equal(flow.stars.length, 11);
+});
+
 test('流年立春按目标 IANA 时区反解且不沿用出生时刻偏移', () => {
   const result = generateQizheng({
     ...NEW_YORK_SUMMER_BIRTH,
