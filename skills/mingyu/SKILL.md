@@ -16,7 +16,7 @@ description: 传统命理、周易占问、星象、择日、宅居与签谱的�
 1. **建立问题卡**：写明事项、主体、关系身份、目标、时间范围、地域/时区、已知事实、期待的回答粒度和指定术式。读取 [`references/intake.md`](references/intake.md)，先确定资料是完整、部分可用还是需要补采。
 2. **锁定时空与口径**：保存历法、当地钟表时间、时区、真太阳时、节气换界和起盘方式。时间不确定时，以条件分支表达，并保留影响到的层级。
 3. **选择路线**：读取 [`references/routing.md`](references/routing.md)，按主体、意图和跨度确定规范方法 key。主方法负责主要结论，辅助方法各自回答擅长的维度，方法数量服从问题而定。
-4. **建立证据账**：读取 [`references/evidence.md`](references/evidence.md)，将输入事实、计算盘面、传统依据、关系推断和现实核验分层记录。每条结论回指对应事实与理法，冲突写成条件分支。
+4. **建立证据账**：读取 [`references/evidence.md`](references/evidence.md)，将输入事实、计算盘面、传统依据、关系推断和现实核验分层记录。每条重点结论回指对应事实与理法；复杂格局先逐项核对成立条件，再比较反证与制化有效性，说明主次取舍及决定分支的缺项。
 5. **独立解读**：读取 [`references/interpretation.md`](references/interpretation.md) 中对应方法段；长周期、交运交限、流年流月或事件先后再读取 [`references/timing.md`](references/timing.md)。奇门涉及取象转换时补读 [`references/qimen-images.md`](references/qimen-images.md)。
 6. **处理动态与应期**：先确定事件阶段和时间包络，再从方法自身的运限、卦爻、三传、牌位、节气或宅运推导窗口。所有边界使用明确起止时刻或日期粒度，交界处保留前后层级。
 7. **合参与复核**：多方法读取 [`references/synthesis.md`](references/synthesis.md)，发送或交付前读取 [`references/reasoning-checks.md`](references/reasoning-checks.md)。合参保留方法职责、共同事实、分歧条件和未覆盖资料。
@@ -68,6 +68,6 @@ description: 传统命理、周易占问、星象、择日、宅居与签谱的�
 
 ## 入口检查
 
-交付前确认：主体与问题唯一；时间、历法、地点和范围有口径；主法取用链完整；每条结论能回指事实与理法；条件分支、应期边界、合参职责和资料缺口已写明；提示词是自包含的完整任务书，正文不出现工程、项目、接口、来源实现或内部字段。
+交付前确认：主体与问题唯一；时间、历法、地点和范围有口径；主法取用链完整；格局名称与成败判断分开；每条结论能回指事实与理法、成立条件和反向证据；条件分支、应期边界、合参职责和资料缺口已写明；提示词是自包含的完整任务书，正文不出现工程、项目、接口、来源实现或内部字段。
 
 共同原则和方法级路线位于 [`references/reading-workflow.json`](references/reading-workflow.json)。按需读取对应条目，不把未使用的方法段落拼入当前任务。

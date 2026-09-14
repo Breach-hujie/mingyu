@@ -9,7 +9,7 @@ import { formatBaziForPrompt, type BaziChartResult, type FortuneSelectionContext
 import type { ZiweiRuntime } from '../ziwei/runtime';
 import { formatZiweiFortuneTimeline } from '../ziwei/fortune-timeline';
 import { formatBaziFortuneSelection, formatBaziFullFortune } from './bazi-fortune';
-import { formatBaziTopicFocus } from './bazi';
+import { formatBaziTopicFocus, formatBaziPatternConditions } from './bazi';
 import {
   buildSerializableZiweiResult,
   formatZiweiPayloadForPrompt,
@@ -317,6 +317,9 @@ export function buildBaziPromptForResult(params: {
     section('当前时间', formatPromptCurrentTime()),
     section('排盘信息', chart),
     formatBaziTopicFocus(topic) ? section('主题取用', formatBaziTopicFocus(topic)) : '',
+    formatBaziPatternConditions(params.result)
+      ? section('格局条件', formatBaziPatternConditions(params.result))
+      : '',
     section('分析对象', scopeText),
     effectiveFortuneScope === 'full'
       ? section('命限资料', formatBaziFullFortune(params.result))

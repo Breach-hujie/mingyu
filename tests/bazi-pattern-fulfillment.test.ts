@@ -1,130 +1,170 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { baziCalculator } from '../packages/core/src/bazi/baziCalculator';
 import { evaluatePatternFulfillment } from '../packages/core/src/bazi/baziPatternFulfillment';
 import { getTenGod } from '../packages/core/src/bazi/baziUtils';
 import type { Pillars } from '../packages/core/src/bazi/baziTypes';
 
-test('未匹配成败条件的格局保留未判定，继续提供合参依据', () => {
-  const pillars: Pillars = {
-    year: { gan: '甲', zhi: '子', ganZhi: '甲子' },
-    month: { gan: '乙', zhi: '酉', ganZhi: '乙酉' },
-    day: { gan: '甲', zhi: '寅', ganZhi: '甲寅' },
-    hour: { gan: '乙', zhi: '丑', ganZhi: '乙丑' },
-  };
-  for (const pattern of ['其他格局', '正官格']) {
-    const result = evaluatePatternFulfillment(pillars, '甲', pattern, getTenGod);
-    assert.equal(result.status, '未判定', pattern);
-    assert.match(result.summary, /月令、透干、根气与制化条件/u);
-    assert.equal(result.contradiction, '');
-    assert.deepEqual(result.remedies, []);
+function pillars(values: [string, string, string, string]): Pillars {
+  return Object.fromEntries(
+    ['year', 'month', 'day', 'hour'].map((key, index) => [
+      key,
+      {
+        gan: values[index][0],
+        zhi: values[index][1],
+        ganZhi: values[index],
+      },
+    ]),
+  ) as unknown as Pillars;
+}
+
+test('正官见伤印财保留柱位与相碍条件，透印本身不判破而复成', () => {
+  const chart = pillars(['壬申', '己酉', '甲子', '丁卯']);
+  const result = evaluatePatternFulfillment(chart, '甲', '正官格', getTenGod);
+  assert.equal(result.status, '未判定');
+  assert.match(result.contradiction, /正官与伤官同见/);
+  assert.ok(
+    result.remedies.some(
+      (item) => item.stem === '壬' && item.pillar === 'year' && item.placement === '透干',
+    ),
+  );
+  assert.ok(result.remedies.some((item) => item.stem === '己' && item.tenGod === '正财'));
+  assert.match(result.conditions!.join('；'), /财印.*各起作用/);
+  assert.match(result.evidence!.join('；'), /月柱己酉.*月柱藏干辛（正官）/);
+  assert.doesNotMatch(JSON.stringify(result), /紧贴克官|格局大成|仕途稳健|富贵自天来/);
+  const changed = evaluatePatternFulfillment(
+    pillars(['壬午', '己酉', '甲子', '丁卯']),
+    '甲',
+    '正官格',
+    getTenGod,
+  );
+  assert.match(changed.evidence![0], /年柱壬午/);
+  assert.doesNotMatch(changed.evidence![0], /藏干壬/);
+  assert.notDeepEqual(changed.evidence, result.evidence);
+});
+
+test('食印并见的七杀格保留两条取用与印制食反证', () => {
+  const result = evaluatePatternFulfillment(
+    pillars(['丙午', '庚申', '甲寅', '壬申']),
+    '甲',
+    '七杀格',
+    getTenGod,
+  );
+  assert.equal(result.status, '未判定');
+  assert.ok(
+    result.remedies.some(
+      (item) => item.stem === '丙' && item.pillar === 'year' && item.effect.includes('食神制杀'),
+    ),
+  );
+  assert.ok(
+    result.remedies.some(
+      (item) => item.stem === '壬' && item.pillar === 'hour' && item.effect.includes('杀印相生'),
+    ),
+  );
+  assert.match(result.contradiction, /印制食.*制杀/);
+  const withoutExposedYin = evaluatePatternFulfillment(
+    pillars(['丙午', '庚申', '甲寅', '乙亥']),
+    '甲',
+    '七杀格',
+    getTenGod,
+  );
+  assert.ok(
+    withoutExposedYin.remedies.some((item) => item.stem === '壬' && item.placement === '藏干'),
+  );
+  assert.ok(
+    !withoutExposedYin.remedies.some((item) => item.tenGod === '偏印' && item.placement === '透干'),
+  );
+});
+
+test('财、食、印和禄劫取用保留实际候选，成败不由十神数量代替', () => {
+  const cases = [
+    {
+      chart: ['甲子', '戊辰', '乙丑', '丙戌'],
+      day: '乙',
+      name: '正财格',
+      path: '泄比生财',
+      stem: '丙',
+    },
+    {
+      chart: ['庚申', '甲申', '丙午', '戊子'],
+      day: '丙',
+      name: '食神格',
+      path: '制枭护食',
+      stem: '庚',
+    },
+    {
+      chart: ['戊子', '癸亥', '甲寅', '庚申'],
+      day: '甲',
+      name: '正印格',
+      path: '生印',
+      stem: '庚',
+    },
+    {
+      chart: ['甲寅', '丙寅', '甲戌', '乙卯'],
+      day: '甲',
+      name: '建禄格',
+      path: '泄秀',
+      stem: '丙',
+    },
+  ];
+  for (const item of cases) {
+    const result = evaluatePatternFulfillment(
+      pillars(item.chart as [string, string, string, string]),
+      item.day,
+      item.name,
+      getTenGod,
+    );
+    assert.equal(result.status, '未判定', item.name);
+    assert.ok(
+      result.remedies.some((r) => r.stem === item.stem && r.effect.includes(item.path)),
+      item.name,
+    );
+    assert.ok(result.conditions!.length > 0);
   }
+  const monthJie = evaluatePatternFulfillment(
+    pillars(['甲寅', '乙卯', '甲戌', '乙亥']),
+    '甲',
+    '劫财格',
+    getTenGod,
+  );
+  assert.match(monthJie.basis, /禄劫刃/);
+  assert.doesNotMatch(monthJie.basis, /^财格/);
+  const noCompanion = evaluatePatternFulfillment(
+    pillars(['丙午', '戊戌', '乙酉', '辛巳']),
+    '乙',
+    '正财格',
+    getTenGod,
+  );
+  assert.ok(noCompanion.remedies.some((item) => item.effect.includes('食伤生财')));
+  assert.doesNotMatch(JSON.stringify(noCompanion.remedies), /泄比|制比/);
 });
 
-test('子平真诠：正官格见伤官破格，透印绶制伤护官，破而复成', () => {
-  // 假设：甲日主生酉月（正官格），天干透丁火（伤官欲破官），天干又透壬水（枭/印克丁火护酉金正官）
-  // 年柱：壬申（印） 月柱：己酉（财/官） 日柱：甲子（日主） 时柱：丁卯（伤官）
-  const pillars: Pillars = {
-    year: { gan: '壬', zhi: '申', ganZhi: '壬申' },
-    month: { gan: '己', zhi: '酉', ganZhi: '己酉' },
-    day: { gan: '甲', zhi: '子', ganZhi: '甲子' },
-    hour: { gan: '丁', zhi: '卯', ganZhi: '丁卯' },
-  };
-
-  const result = evaluatePatternFulfillment(pillars, '甲', '正官格', getTenGod);
-  assert.equal(result.status, '破而复成');
-  assert.ok(result.contradiction.includes('伤官见官'));
-  assert.ok(result.remedies.length > 0);
-  assert.equal(result.remedies[0].stem, '壬');
-  assert.ok(result.remedies[0].effect.includes('护住正官'));
-});
-
-test('子平真诠：正官格官杀混杂，透食神去杀留官，格转清纯', () => {
-  // 假设：甲日主生酉月（正官格），天干透庚金（七杀混杂），又透丙火（食神制庚金七杀）
-  const pillars: Pillars = {
-    year: { gan: '丙', zhi: '寅', ganZhi: '丙寅' }, // 食神
-    month: { gan: '庚', zhi: '申', ganZhi: '庚申' }, // 七杀
-    day: { gan: '甲', zhi: '戌', ganZhi: '甲戌' },
-    hour: { gan: '辛', zhi: '未', ganZhi: '辛未' }, // 正官
-  };
-
-  const result = evaluatePatternFulfillment(pillars, '甲', '正官格', getTenGod);
-  assert.equal(result.status, '破而复成');
-  assert.ok(result.contradiction.includes('官杀混杂'));
-  assert.equal(result.remedies[0].tenGod, '食神');
-});
-
-test('子平真诠：财格逢比劫夺财破格，透食伤通关化劫生财，破而复成', () => {
-  // 假设：乙日主生辰月（财格），天干透甲木（劫财争财），透丙火（伤官生财通关）
-  const pillars: Pillars = {
-    year: { gan: '甲', zhi: '子', ganZhi: '甲子' }, // 劫财
-    month: { gan: '戊', zhi: '辰', ganZhi: '戊辰' }, // 正财
-    day: { gan: '乙', zhi: '丑', ganZhi: '乙丑' },
-    hour: { gan: '丙', zhi: '戌', ganZhi: '丙戌' }, // 伤官
-  };
-
-  const result = evaluatePatternFulfillment(pillars, '乙', '正财格', getTenGod);
-  assert.equal(result.status, '破而复成');
-  assert.ok(result.contradiction.includes('比劫分夺财星'));
-  assert.equal(result.remedies[0].stem, '丙');
-});
-
-test('子平真诠：食神格逢偏印枭神夺食破格，透财星制枭护食，转破为成', () => {
-  // 假设：丙日主生丑月己土透干（伤官/食神），透甲木（偏印夺食），透庚金（偏财制甲木偏印）
-  const pillars: Pillars = {
-    year: { gan: '庚', zhi: '申', ganZhi: '庚申' }, // 偏财
-    month: { gan: '甲', zhi: '申', ganZhi: '甲申' }, // 偏印
-    day: { gan: '丙', zhi: '午', ganZhi: '丙午' },
-    hour: { gan: '戊', zhi: '子', ganZhi: '戊子' }, // 食神
-  };
-
-  const result = evaluatePatternFulfillment(pillars, '丙', '食神格', getTenGod);
-  assert.equal(result.status, '破而复成');
-  assert.ok(result.contradiction.includes('枭神夺食'));
-  assert.equal(result.remedies[0].stem, '庚');
-});
-
-test('子平真诠：七杀格得食神制杀大成格', () => {
-  // 甲日主生申月（七杀格），透丙火食神制杀
-  const pillars: Pillars = {
-    year: { gan: '丙', zhi: '午', ganZhi: '丙午' }, // 食神
-    month: { gan: '庚', zhi: '申', ganZhi: '庚申' }, // 七杀
-    day: { gan: '甲', zhi: '寅', ganZhi: '甲寅' },
-    hour: { gan: '乙', zhi: '亥', ganZhi: '乙亥' },
-  };
-
-  const result = evaluatePatternFulfillment(pillars, '甲', '七杀格', getTenGod);
-  // console.log('DEBUG result:', result);
-  assert.equal(result.status, '成格');
-  assert.ok(result.summary.includes('食神制杀'));
-});
-
-test('劫财格不得借用财格成败规则，按未单列细则登记', () => {
-  // 劫财格名称包含“财格”子串，历史上会被误送入财格的比劫争财分支
-  const pillars: Pillars = {
-    year: { gan: '甲', zhi: '寅', ganZhi: '甲寅' }, // 比肩
-    month: { gan: '乙', zhi: '卯', ganZhi: '乙卯' }, // 劫财（月令刃劫）
-    day: { gan: '甲', zhi: '戌', ganZhi: '甲戌' },
-    hour: { gan: '乙', zhi: '亥', ganZhi: '乙亥' }, // 比肩
-  };
-
-  const result = evaluatePatternFulfillment(pillars, '甲', '劫财格', getTenGod);
-  assert.equal(result.status, '平常');
-  assert.match(result.summary, /细则尚未单列|细则待补充/);
-  assert.doesNotMatch(result.summary, /争财|通关化劫|真纯/);
-  assert.doesNotMatch(result.basis, /财格逢|争财/);
-});
-
-test('建禄格比劫重重但见食伤时，不得记为不见财官食伤', () => {
-  // 甲日建禄格，寅卯比劫成群，无财官但透丙火食伤吐秀
-  const pillars: Pillars = {
-    year: { gan: '甲', zhi: '寅', ganZhi: '甲寅' }, // 比肩
-    month: { gan: '丙', zhi: '寅', ganZhi: '丙寅' }, // 食神
-    day: { gan: '甲', zhi: '戌', ganZhi: '甲戌' },
-    hour: { gan: '乙', zhi: '卯', ganZhi: '乙卯' }, // 劫财
-  };
-
-  const result = evaluatePatternFulfillment(pillars, '甲', '建禄格', getTenGod);
-  assert.notEqual(result.status, '破格');
-  assert.doesNotMatch(result.summary, /无财官食伤|不见财官食伤/);
+test('未见格神或未知格局时不生成其他格局的救应', () => {
+  const chart = pillars(['甲子', '乙卯', '甲寅', '乙卯']);
+  for (const name of ['正官格', '其他格局']) {
+    const result = evaluatePatternFulfillment(chart, '甲', name, getTenGod);
+    assert.equal(result.status, '未判定');
+    assert.deepEqual(result.remedies, []);
+    assert.equal(result.contradiction, '');
+    assert.equal(result.evidence!.length, 4);
+  }
+  const yinDay = evaluatePatternFulfillment(
+    pillars(['甲子', '辛未', '乙卯', '庚辰']),
+    '乙',
+    '正官格',
+    getTenGod,
+  );
+  assert.match(yinDay.contradiction, /官杀同见/);
+  assert.ok(!yinDay.remedies.some((item) => item.tenGod === '劫财'));
+  const yangDay = evaluatePatternFulfillment(
+    pillars(['乙丑', '庚辰', '甲寅', '辛未']),
+    '甲',
+    '正官格',
+    getTenGod,
+  );
+  assert.ok(
+    yangDay.remedies.some(
+      (item) =>
+        item.stem === '乙' && item.effect.includes('庚') && item.effect.includes('五合关系'),
+    ),
+  );
 });

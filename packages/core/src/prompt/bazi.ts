@@ -159,45 +159,53 @@ export function formatBaziTopicFocus(topic: BaziPromptTopic) {
     : '';
 }
 
+export function formatBaziPatternConditions(result: BaziChartResult): string {
+  const fulfillment = result.analysis?.mingGe?.fulfillment;
+  if (!fulfillment) return '';
+  return [
+    `所取格局：${fulfillment.patternName}；${fulfillment.basis}`,
+    fulfillment.contradiction ? `相互制约：${fulfillment.contradiction}` : '',
+    ...fulfillment.remedies.map((item) => `候选取用：${item.effect}`),
+    ...(fulfillment.conditions ?? []).map((item) => `成立条件：${item}`),
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
 export function buildBaziPromptDocument(options: BaziPromptOptions): PromptDocument {
   const topic = options.topic ?? 'general';
   const topicLabel = TOPIC_LABELS[topic];
   const question = options.question?.trim() || `请围绕${topicLabel}解读这份八字资料。`;
+  const hasFortuneData = Boolean(
+    options.fortuneSelectionContext ||
+    options.fortuneFocus?.trim() ||
+    (options.fortuneScope === 'full' && options.result.luckInfo?.cycles?.length),
+  );
+  const taskMethod = hasFortuneData ? 'bazi' : 'bazi-natal';
   const task =
     options.mode === 'custom'
-      ? buildCustomQuestionTask('八字排盘资料', 'bazi')
-      : buildPromptTask(getBaziTopicTask(topic, topicLabel), 'bazi');
+      ? buildCustomQuestionTask('八字排盘资料', taskMethod)
+      : buildPromptTask(
+          hasFortuneData
+            ? getBaziTopicTask(topic, topicLabel)
+            : `请依据四柱原局资料重点分析${topicLabel}，回答【问题】。`,
+          taskMethod,
+        );
   const selectedTask = options.selection ? buildPromptSelectionTask(task, options.selection) : task;
-  const chart = formatBaziForPrompt(
-    options.result,
-    null,
-    options.fortuneScope === 'natal' ? 'general' : 'fortune',
-  );
+  const chart = formatBaziForPrompt(options.result, null, hasFortuneData ? 'fortune' : 'general');
   const fortuneSelection = formatBaziFortuneSelection(options.fortuneSelectionContext);
   const fortuneFocus = [options.fortuneFocus?.trim(), fortuneSelection?.focus.trim()]
     .filter(Boolean)
     .join('\n');
   const scopeText = fortuneSelection
     ? fortuneSelection.analysisObject
-    : options.fortuneScope && options.fortuneScope !== 'natal'
+    : hasFortuneData && options.fortuneScope && options.fortuneScope !== 'natal'
       ? `分析对象：${options.fortuneScope === 'full' ? '本命盘与完整大运流年' : options.fortuneScope}`
       : '分析对象：本命盘';
   const selectedSchools = normalizeBaziPromptSchools(options.schools);
 
-  const fulfillment = options.result.analysis?.mingGe?.fulfillment;
-  const focusSection = fulfillment
-    ? buildPromptSection(
-        '盘面焦点',
-        [
-          `格局理法：【${fulfillment.patternName}】（${fulfillment.status}）。${fulfillment.summary}`,
-          fulfillment.remedies.length > 0
-            ? `救应药神：${fulfillment.remedies.map((r: { effect: string }) => r.effect).join('；')}`
-            : '',
-        ]
-          .filter(Boolean)
-          .join('\n'),
-      )
-    : '';
+  const patternConditions = formatBaziPatternConditions(options.result);
+  const focusSection = patternConditions ? buildPromptSection('格局条件', patternConditions) : '';
 
   const user = joinPromptSections([
     buildPromptGuidance('bazi'),

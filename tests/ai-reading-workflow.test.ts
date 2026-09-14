@@ -990,7 +990,11 @@ test('真实完整紫微规范正文未超限时进入最终stream', async () =>
 });
 
 test('紫微结构化时间线超限时按完整阶段事实逐段解读并汇总', async () => {
-  const h = harness(['第一阶段判断', '第二阶段判断', '全部阶段汇总']);
+  const h = harness([
+    '第一阶段主判断：事业推进；原始证据：第一阶段盘面证据；成立条件：第一阶段条件；反向证据：第一阶段反向证据；未决项：第一阶段未决项。',
+    '第二阶段主判断：事业调整；原始证据：第二阶段盘面证据；成立条件：第二阶段条件；反向证据：第二阶段反向证据；未决项：第二阶段未决项。',
+    '全部阶段汇总',
+  ]);
   const resource = makeZiweiFullResource(2, 1500, '完整原始资料'.repeat(16000));
   h.options.memory.resources = [resource];
   h.options.subject = ziweiSubject;
@@ -1011,6 +1015,9 @@ test('紫微结构化时间线超限时按完整阶段事实逐段解读并汇�
   // 即使阶段回答省略日期，汇总仍带入原资料的年份、干支和起止边界。
   assert.match(h.sent[2]![0]!.content, /流年2000 甲子（2000-01-01至2000-12-31）/);
   assert.match(h.sent[2]![0]!.content, /流年2001 甲子（2001-01-01至2001-12-31）/);
+  assert.match(h.sent[2]![0]!.content, /成立条件：第一阶段条件/u);
+  assert.match(h.sent[2]![0]!.content, /反向证据：第二阶段反向证据/u);
+  assert.match(h.sent[2]![0]!.content, /未决项：第一阶段未决项/u);
   assert.equal(h.options.memory.resources[0], resource);
   assert.equal(
     h.options.memory.ziweiPhaseReading?.phases.every((item) => item.status === 'succeeded'),
