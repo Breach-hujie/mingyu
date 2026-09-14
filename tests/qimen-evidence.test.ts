@@ -122,8 +122,28 @@ test('奇门证据应保留空亡与宫间五行反证', () => {
   assert.ok(evidence.relations.every((item) => item.relation.length > 0));
 });
 
-test('奇门应根据空亡与门迫推导格局成破实效', () => {
+test('奇门中性格局与多宫门迫保留各宫条件，空亡不直接翻转吉凶', () => {
   const data = generateQimen(fixedDate);
+  const [first, second] = data.jiuGongGe;
+  data.classicPatterns = [
+    { name: '中性组合', type: 'neutral', summary: '组合', palaces: [first.gong] },
+    { name: '吉格组合', type: 'good', summary: '组合', palaces: [second.gong] },
+  ];
+  data.patternTags = [`门迫（${first.name}、${second.name}）`];
+  data.voidPalaces = [{ branch: '子', palace: first.gong, name: first.name }];
   const fulfillments = evaluateQimenPatternFulfillment(data);
-  assert.ok(Array.isArray(fulfillments));
+  assert.equal(fulfillments.length, 2);
+  assert.match(fulfillments[0], /中性格局.*空亡、门迫/);
+  assert.doesNotMatch(fulfillments[0], /吉力|凶势|减弱|虚浮/);
+  assert.match(fulfillments[1], /吉格.*门迫/);
+  assert.doesNotMatch(fulfillments[1], /同宫见空亡/);
+  data.patternTags = [];
+  data.classicPatterns.push({
+    name: '门迫',
+    type: 'bad',
+    summary: '门克宫',
+    palaces: [second.gong],
+  });
+  const structured = evaluateQimenPatternFulfillment(data);
+  assert.ok(structured.some((item) => item.includes('吉格组合') && item.includes('门迫')));
 });

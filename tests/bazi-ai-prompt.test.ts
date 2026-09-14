@@ -11,6 +11,8 @@ import { identifyClassicPattern as identifyClassicPatternLocal } from '@core/baz
 import { generateEnhancedAnalysisSection } from '@core/bazi/baziPromptEnhancement';
 import { PROMPT_GUIDANCE_TEXT as PROMPT_ROLE_TEXT } from '../src/lib/prompt-guidance';
 import { assertPromptHasAnswerFramework, assertPromptHasSingleRole } from './prompt-assertions';
+import { buildBaziPrompt, formatBaziPatternConditions } from '../packages/core/src/prompt/bazi';
+import { buildBaziPromptForResult } from '../packages/core/src/prompt/public-api';
 
 function assertNoEngineeringPromptText(prompt: string) {
   assert.doesNotMatch(
@@ -90,6 +92,18 @@ test('八字输出提示词应是可复制给在线 AI 的独立任务书，不�
 
   assertPromptHasSingleRole(combinedPrompt, PROMPT_ROLE_TEXT.bazi);
   assertNoEngineeringPromptText(combinedPrompt);
+  const conditions = formatBaziPatternConditions(result);
+  assert.ok(conditions.includes('成立条件：'));
+  for (const text of [
+    combinedPrompt,
+    buildBaziPrompt({ result, topic: 'career', fortuneScope: 'natal' }),
+    buildBaziPromptForResult({ result, topic: 'career', fortuneScope: 'natal' }),
+  ]) {
+    assert.ok(text.includes(conditions));
+    const task = text.split('【任务】\n')[1]?.split('【问题】')[0] ?? '';
+    assert.ok(task.length > 0);
+    assert.doesNotMatch(task, /大运|流年|岁运/);
+  }
 });
 
 test('八字单盘空问题补通用问题，分类不再塞本地固定问题', () => {

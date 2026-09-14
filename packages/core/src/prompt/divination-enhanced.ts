@@ -785,7 +785,7 @@ function formatQimenInfo(data: QimenData, supplementaryInfo?: SupplementaryInfo)
     ...palaceLines,
     `同干定位：\n${formatQimenStemLocations(data).join('\n')}`,
     classicPatternLines.length ? `格局索引：\n${classicPatternLines.join('\n')}` : '',
-    patternFulfillments.length ? `格局实效：${patternFulfillments.join('；')}` : '',
+    patternFulfillments.length ? `格局条件：\n${patternFulfillments.join('\n')}` : '',
   ]
     .filter(Boolean)
     .join('\n');

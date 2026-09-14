@@ -14,6 +14,7 @@ import {
   BAZI_PROMPT_PRESETS,
   buildPromptSelectionTask,
   formatBaziFullFortune,
+  formatBaziPatternConditions,
   formatBaziFortuneSelection,
   getPromptSelectionSection,
   requirePromptSelection,
@@ -133,6 +134,11 @@ export function buildPromptFromConfig(
         })
       : undefined;
   const hasFullFortuneOutput = fortuneScope === 'full';
+  const taskMethod =
+    fortuneSelectionContext || (hasFullFortuneOutput && chartResult?.luckInfo?.cycles?.length)
+      ? 'bazi'
+      : 'bazi-natal';
+  const patternConditions = chartResult ? formatBaziPatternConditions(chartResult) : '';
   const promptConfig: SinglePromptConfig | null = chartResult?.pillars
     ? (BAZI_AI_PROMPTS.single.find((c) => c.id === selectedOption.id) ?? null)
     : null;
@@ -157,7 +163,9 @@ export function buildPromptFromConfig(
     const baseTask = [buildBaziTaskText(scopeLabel, promptConfig.prompt), fortuneAddon]
       .filter(Boolean)
       .join(' ');
-    const task = selection ? buildPromptSelectionTask(baseTask, selection) : baseTask;
+    const task = selection
+      ? buildPromptSelectionTask(buildPromptTask(baseTask, taskMethod), selection)
+      : baseTask;
 
     return {
       system: SYSTEM_PROMPT,
@@ -165,6 +173,7 @@ export function buildPromptFromConfig(
         buildPromptGuidanceSections('bazi'),
         buildPromptSection('当前时间', formatPromptCurrentTime()),
         buildPromptSection('排盘信息', chartData),
+        patternConditions ? buildPromptSection('格局条件', patternConditions) : '',
         selection ? buildPromptSection('解读选择', getPromptSelectionSection(selection)) : '',
         hasFullFortuneOutput
           ? buildPromptSection('分析对象', buildBaziFullAnalysisObjectSection())
@@ -180,8 +189,8 @@ export function buildPromptFromConfig(
           selection
             ? task
             : isCustomQuestion
-              ? buildCustomQuestionTask('八字排盘资料', 'bazi')
-              : buildPromptTask(task || '请依据八字排盘资料完成解读。', 'bazi'),
+              ? buildCustomQuestionTask('八字排盘资料', taskMethod)
+              : buildPromptTask(task || '请依据八字排盘资料完成解读。', taskMethod),
         ),
         normalizedQuestion ? buildPromptSection('问题', normalizedQuestion) : '',
       ]),
@@ -201,6 +210,7 @@ export function buildPromptFromConfig(
       buildPromptGuidanceSections('bazi'),
       buildPromptSection('当前时间', formatPromptCurrentTime()),
       buildPromptSection('排盘信息', chartData),
+      patternConditions ? buildPromptSection('格局条件', patternConditions) : '',
       selection ? buildPromptSection('解读选择', getPromptSelectionSection(selection)) : '',
       hasFullFortuneOutput
         ? buildPromptSection('分析对象', buildBaziFullAnalysisObjectSection())
@@ -214,13 +224,13 @@ export function buildPromptFromConfig(
         selection
           ? buildPromptSelectionTask(
               isCustomQuestion
-                ? buildCustomQuestionTask('八字排盘资料', 'bazi')
-                : buildPromptTask('请依据八字排盘资料完成解读。', 'bazi'),
+                ? buildCustomQuestionTask('八字排盘资料', taskMethod)
+                : buildPromptTask('请依据八字排盘资料完成解读。', taskMethod),
               selection,
             )
           : isCustomQuestion
-            ? buildCustomQuestionTask('八字排盘资料', 'bazi')
-            : buildPromptTask('请依据八字排盘资料完成解读。', 'bazi'),
+            ? buildCustomQuestionTask('八字排盘资料', taskMethod)
+            : buildPromptTask('请依据八字排盘资料完成解读。', taskMethod),
       ),
       normalizedQuestion ? buildPromptSection('问题', normalizedQuestion) : '',
     ]),

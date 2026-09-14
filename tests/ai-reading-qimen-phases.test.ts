@@ -99,13 +99,27 @@ test('三十一年奇门终身局超容量时分阶段送入AI并覆盖每条日
   const data = resource.structured as unknown as QimenLifetimeData;
   const subject = buildSubject(data);
   const h = makeHarness(resource, subject);
+  let phaseIndex = 0;
+  const stream: ReadingDependencies['stream'] = async (messages, callbacks) => {
+    h.sent.push(messages);
+    const firstContent = messages[0]?.content ?? '';
+    if (firstContent.includes('【奇门终身局阶段覆盖核对】')) {
+      callbacks.onChunk('全部阶段最终汇总');
+    } else {
+      phaseIndex += 1;
+      callbacks.onChunk(
+        `阶段回答${phaseIndex}\n主判断：阶段主判断${phaseIndex}\n原始证据：阶段原始证据${phaseIndex}\n成立条件：阶段条件${phaseIndex}\n反向证据：阶段反向证据${phaseIndex}\n未决项：阶段未决项${phaseIndex}`,
+      );
+    }
+    callbacks.onDone();
+  };
   assert.match(resource.text, /【当前时间】/u);
   assert.ok(resource.text.length > 49_000);
 
   await runReadingWorkflow(
     [{ role: 'user', content: '奇门终身局完整资料，问全部人生阶段事业变化。' }],
     h.options,
-    { stream: h.stream, execute: async () => resource },
+    { stream, execute: async () => resource },
   );
 
   assert.deepEqual(h.errors, []);
@@ -137,6 +151,9 @@ test('三十一年奇门终身局超容量时分阶段送入AI并覆盖每条日
   const finalPrompt = h.sent.at(-1)![0]!.content;
   assert.match(finalPrompt, /奇门终身局阶段覆盖核对/u);
   assert.match(finalPrompt, /2026-01-01至2056-12-31/u);
+  assert.match(finalPrompt, /成立条件：阶段条件\d+/u);
+  assert.match(finalPrompt, /反向证据：阶段反向证据\d+/u);
+  assert.match(finalPrompt, /未决项：阶段未决项\d+/u);
   assert.equal(
     h.memory.qimenPhaseReading?.phases.every((phase) => phase.status === 'succeeded'),
     true,
